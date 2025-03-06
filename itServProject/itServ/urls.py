@@ -11,6 +11,10 @@ urlpatterns=[
 path('admin/dashboard/', views.admin_dashboard, name='admin_dashboard'),
     path('responsablerh/dashboard/', views.responsablerh_dashboard, name='responsablerh_dashboard'),
     path('logout/', views.logout_view, name='logout'),  # Nouvelle route pour logout
-    path('changer-password/', views.ChangePasswordView.as_view(), name='changer_password'),  # Nouvelle route
+    path('changer-password/', views.ChangePasswordView.as_view(), name='changer_password'),
+    path('change-password/', views.ChangePasswordView.as_view(), name='change_password'),
+    path('password/reset/', views.PasswordResetView.as_view(), name='password_reset'),
+    path('reset-password/<uidb64>/<token>/', views.PasswordResetConfirmView.as_view(), name='password_reset_confirm'),
+    # Nouvelle route
 
 ]

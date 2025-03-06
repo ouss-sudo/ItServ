@@ -385,8 +385,8 @@
               </div>
               <input type="hidden" name="role" value="ResponsableRH" />
             </fieldset>
-            <div class="forms_buttons">
-              <button type="button" class="forms_buttons-forgot">Mot de passe oublié ?</button>
+  <div class="forms_buttons">
+              <a href="{% url 'password_reset' %}" class="forms_buttons-forgot">Mot de passe oublié ?</a>
               <input type="submit" value="Se connecter" class="forms_buttons-action">
             </div>
           </form>
@@ -413,8 +413,8 @@
               </div>
               <input type="hidden" name="role" value="EMPLOYE" />
             </fieldset>
-            <div class="forms_buttons">
-              <button type="button" class="forms_buttons-forgot">Mot de passe oublié ?</button>
+          <div class="forms_buttons">
+              <a href="{% url 'password_reset' %}" class="forms_buttons-forgot">Mot de passe oublié ?</a>
               <input type="submit" value="Se connecter" class="forms_buttons-action">
             </div>
           </form>

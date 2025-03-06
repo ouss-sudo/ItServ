@@ -1,6 +1,6 @@
 from django.shortcuts import render, redirect
-from django.contrib.auth import login as auth_login  # Import avec alias pour éviter conflit
-from django.contrib.auth import authenticate, logout as auth_logout  # Ajout de logout
+from django.contrib.auth import login as auth_login, logout as auth_logout
+from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.contrib import messages
 from django.views import View
@@ -8,9 +8,13 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect
 from .models import Profil
 from django.core.mail import send_mail
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes, force_str
+from django.contrib.auth.tokens import default_token_generator
 import secrets
 import string
 import logging
+
 
 logger = logging.getLogger(__name__)
 
@@ -221,3 +225,97 @@ class ChangePasswordView(View):
         messages.success(request, "Votre mot de passe a été changé avec succès. Veuillez vous reconnecter.")
         auth_logout(request)  # Déconnecter après changement
         return redirect('login')
+class PasswordResetView(View):
+    template_name = 'ITservBack/login/password_reset.html'
+
+    @method_decorator(csrf_protect)
+    def get(self, request):
+        return render(request, self.template_name)
+
+    @method_decorator(csrf_protect)
+    def post(self, request):
+        username = request.POST.get('username')
+
+        try:
+            user = User.objects.get(username=username)
+            logger.info(f"Demande de réinitialisation de mot de passe pour {username}.")
+
+            # Générer un token et un UID pour le lien
+            token = default_token_generator.make_token(user)
+            uid = urlsafe_base64_encode(force_bytes(user.pk))
+
+            # Créer le lien de réinitialisation
+            reset_link = f"http://127.0.0.1:8000/reset-password/{uid}/{token}/"
+
+            # Envoyer l'email
+            subject = "Réinitialisation de votre mot de passe"
+            message = (
+                f"Bonjour {user.username},\n\n"
+                f"Vous avez demandé à réinitialiser votre mot de passe. Cliquez sur le lien ci-dessous pour procéder :\n"
+                f"{reset_link}\n\n"
+                f"Si vous n'avez pas fait cette demande, ignorez cet email.\n\n"
+                f"Cordialement,\nL'équipe ITserv"
+            )
+            from_email = 'oussama21072000@gmail.com'
+            recipient_list = [user.email]
+
+            try:
+                send_mail(subject, message, from_email, recipient_list, fail_silently=False)
+                logger.info(f"Email de réinitialisation envoyé avec succès à {user.email}")
+                messages.success(request, "Un lien de réinitialisation a été envoyé à votre email.")
+            except Exception as e:
+                logger.error(f"Échec de l'envoi de l'email à {user.email} : {str(e)}")
+                messages.error(request, f"Erreur lors de l'envoi de l'email : {str(e)}")
+            return redirect('login')
+
+        except User.DoesNotExist:
+            logger.warning(f"Utilisateur '{username}' non trouvé pour réinitialisation.")
+            messages.error(request, "Nom d'utilisateur incorrect.")
+            return render(request, self.template_name)
+
+class PasswordResetConfirmView(View):
+    template_name = 'ITservBack/login/password_reset_confirm.html'
+
+    @method_decorator(csrf_protect)
+    def get(self, request, uidb64, token):
+        try:
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=uid)
+            if default_token_generator.check_token(user, token):
+                return render(request, self.template_name, {'uidb64': uidb64, 'token': token})
+            else:
+                messages.error(request, "Le lien de réinitialisation est invalide ou a expiré.")
+                return redirect('login')
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            messages.error(request, "Le lien de réinitialisation est invalide.")
+            return redirect('login')
+
+    @method_decorator(csrf_protect)
+    def post(self, request, uidb64, token):
+        try:
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=uid)
+            if not default_token_generator.check_token(user, token):
+                messages.error(request, "Le lien de réinitialisation est invalide ou a expiré.")
+                return redirect('login')
+
+            new_password = request.POST.get('new_password')
+            confirm_password = request.POST.get('confirm_password')
+
+            if new_password != confirm_password:
+                messages.error(request, "Les mots de passe ne correspondent pas.")
+                return render(request, self.template_name, {'uidb64': uidb64, 'token': token})
+
+            if len(new_password) < 8:
+                messages.error(request, "Le mot de passe doit contenir au moins 8 caractères.")
+                return render(request, self.template_name, {'uidb64': uidb64, 'token': token})
+
+            user.set_password(new_password)
+            user.save()
+            logger.info(f"Mot de passe réinitialisé avec succès pour {user.username}.")
+            messages.success(request, "Votre mot de passe a été réinitialisé avec succès. Veuillez vous connecter.")
+            return redirect('login')
+
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            messages.error(request, "Le lien de réinitialisation est invalide.")
+            return redirect('login')
