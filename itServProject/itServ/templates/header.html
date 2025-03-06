@@ -25,7 +25,6 @@
 
       <nav id="navmenu" class="navmenu">
         <ul>
-          <!-- Afficher tout sur la page d'accueil -->
           {% if is_home %}
             <li><a href="{% url 'home' %}" class="active">Home<br></a></li>
             <li><a href="#about">About</a></li>
@@ -51,12 +50,11 @@
             </li>
             <li><a href="#contact">Contact</a></li>
           {% else %}
-            <!-- Afficher selon le poste après connexion -->
             {% if user.is_authenticated %}
               {% if poste == 'admin' %}
                 <li><a href="{% url 'admin_dashboard' %}">Admin Panel</a></li>
               {% elif poste == 'EMPLOYE' %}
-                <li><a href="{% url 'employe_dashboard' %}">Mon Tableau de Bord</a></li>
+                <li><a href="{% url 'employee' %}">Mon Tableau de Bord</a></li> <!-- Corrigé employe_dashboard en employee -->
               {% elif poste == 'ResponsableRH' %}
                 <li><a href="{% url 'responsablerh_dashboard' %}">Gestion RH</a></li>
               {% endif %}
@@ -75,10 +73,11 @@
           {% if poste == 'admin' %}
             <a class="cta-btn d-none d-sm-block" href="{% url 'admin_dashboard' %}">Admin Dashboard</a>
           {% elif poste == 'EMPLOYE' %}
-            <a class="cta-btn d-none d-sm-block" href="{% url 'employe_dashboard' %}">Employee Dashboard</a>
+            <a class="cta-btn d-none d-sm-block" href="{% url 'employee' %}">Employee Dashboard</a> <!-- Corrigé employe_dashboard en employee -->
           {% elif poste == 'ResponsableRH' %}
             <a class="cta-btn d-none d-sm-block" href="{% url 'responsablerh_dashboard' %}">RH Dashboard</a>
           {% endif %}
+          <a class="cta-btn d-none d-sm-block" href="{% url 'logout' %}">Logout</a> <!-- Bouton Logout ajouté -->
         {% else %}
           <a class="cta-btn d-none d-sm-block" href="{% url 'login' %}">Login</a>
         {% endif %}
