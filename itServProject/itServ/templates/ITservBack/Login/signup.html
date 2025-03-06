@@ -98,7 +98,7 @@
         const error = group.querySelector('.error-message');
         if (!input.value ||
             (input.type === 'email' && !input.value.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) ||
-            (input.type === 'tel' && !input.value.match(/[0-9]{10}/)) ||
+            (input.type === 'tel' && !input.value.match(/[0-8]/)) ||
             (input.tagName === 'SELECT' && input.value === '')) {
           if (error) {
             group.classList.add('invalid');

@@ -1,34 +1,32 @@
 {% load static %}
 
 <header id="header" class="header sticky-top">
-  
-
-    <div class="topbar d-flex align-items-center">
-      <div class="container d-flex justify-content-center justify-content-md-between">
-        <div class="contact-info d-flex align-items-center">
-          <i class="bi bi-envelope d-flex align-items-center"><a href="mailto:contact@example.com">itserv@itserv.tn/a></i>
-          <i class="bi bi-phone d-flex align-items-center ms-4"><span>+216 9999999</span></i>
-        </div>
-        <div class="social-links d-none d-md-flex align-items-center">
-          <a href="#" class="twitter"><i class="bi bi-twitter-x"></i></a>
-          <a href="#" class="facebook"><i class="bi bi-facebook"></i></a>
-          <a href="#" class="instagram"><i class="bi bi-instagram"></i></a>
-          <a href="#" class="linkedin"><i class="bi bi-linkedin"></i></a>
-        </div>
+  <div class="topbar d-flex align-items-center">
+    <div class="container d-flex justify-content-center justify-content-md-between">
+      <div class="contact-info d-flex align-items-center">
+        <i class="bi bi-envelope d-flex align-items-center"><a href="mailto:contact@example.com">itserv@itserv.tn</a></i>
+        <i class="bi bi-phone d-flex align-items-center ms-4"><span>+216 9999999</span></i>
+      </div>
+      <div class="social-links d-none d-md-flex align-items-center">
+        <a href="#" class="twitter"><i class="bi bi-twitter-x"></i></a>
+        <a href="#" class="facebook"><i class="bi bi-facebook"></i></a>
+        <a href="#" class="instagram"><i class="bi bi-instagram"></i></a>
+        <a href="#" class="linkedin"><i class="bi bi-linkedin"></i></a>
       </div>
     </div>
+  </div>
 
-    <div class="branding d-flex align-items-center">
+  <div class="branding d-flex align-items-center">
+    <div class="container position-relative d-flex align-items-center justify-content-between">
+      <a href="{% url 'home' %}" class="logo d-flex align-items-center me-auto">
+        <img src="{% static 'assets/img/logo.png' %}" alt="">
+        <h1 class="sitename">itserv</h1>
+      </a>
 
-      <div class="container position-relative d-flex align-items-center justify-content-between">
-        <a href="index.html" class="logo d-flex align-items-center me-auto">
-          <!-- Uncomment the line below if you also wish to use an image logo -->
-           <img src="assets/img/logo.png" alt="">
-          <h1 class="sitename">itserv</h1>
-        </a>
-
-        <nav id="navmenu" class="navmenu">
-          <ul>
+      <nav id="navmenu" class="navmenu">
+        <ul>
+          <!-- Afficher tout sur la page d'accueil -->
+          {% if is_home %}
             <li><a href="{% url 'home' %}" class="active">Home<br></a></li>
             <li><a href="#about">About</a></li>
             <li><a href="#services">Services</a></li>
@@ -52,16 +50,43 @@
               </ul>
             </li>
             <li><a href="#contact">Contact</a></li>
-          </ul>
-          <i class="mobile-nav-toggle d-xl-none bi bi-list"></i>
-        </nav>
+          {% else %}
+            <!-- Afficher selon le poste après connexion -->
+            {% if user.is_authenticated %}
+              {% if poste == 'admin' %}
+                <li><a href="{% url 'admin_dashboard' %}">Admin Panel</a></li>
+              {% elif poste == 'EMPLOYE' %}
+                <li><a href="{% url 'employe_dashboard' %}">Mon Tableau de Bord</a></li>
+              {% elif poste == 'ResponsableRH' %}
+                <li><a href="{% url 'responsablerh_dashboard' %}">Gestion RH</a></li>
+              {% endif %}
+            {% endif %}
+          {% endif %}
+        </ul>
+        <i class="mobile-nav-toggle d-xl-none bi bi-list"></i>
+      </nav>
 
+      <!-- Boutons CTA -->
+      {% if is_home %}
         <a class="cta-btn d-none d-sm-block" href="#appointment">Make an Appointment</a>
-<a class="cta-btn d-none d-sm-block" href="{% url 'login' %}">Login</a>
-
-
-      </div>
-
+        <a class="cta-btn d-none d-sm-block" href="{% url 'login' %}">Login</a>
+      {% else %}
+        {% if user.is_authenticated %}
+          {% if poste == 'admin' %}
+            <a class="cta-btn d-none d-sm-block" href="{% url 'admin_dashboard' %}">Admin Dashboard</a>
+          {% elif poste == 'EMPLOYE' %}
+            <a class="cta-btn d-none d-sm-block" href="{% url 'employe_dashboard' %}">Employee Dashboard</a>
+          {% elif poste == 'ResponsableRH' %}
+            <a class="cta-btn d-none d-sm-block" href="{% url 'responsablerh_dashboard' %}">RH Dashboard</a>
+          {% endif %}
+        {% else %}
+          <a class="cta-btn d-none d-sm-block" href="{% url 'login' %}">Login</a>
+        {% endif %}
+      {% endif %}
     </div>
+  </div>
+</header>
 
-  </header>
+<!-- Contenu spécifique au template -->
+{% block content %}
+{% endblock %}

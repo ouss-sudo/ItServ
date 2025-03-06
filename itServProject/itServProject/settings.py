@@ -143,7 +143,6 @@ STATICFILES_FINDERS = [
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Logging
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -153,9 +152,14 @@ LOGGING = {
         },
     },
     'loggers': {
-        '': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        'itServProject': {  # Replace with your app name
             'handlers': ['console'],
             'level': 'INFO',
         },
     },
 }
+CSRF_COOKIE_SECURE = True  # Utiliser True en production si tu utilises HTTPS

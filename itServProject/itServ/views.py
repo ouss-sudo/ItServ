@@ -1,5 +1,6 @@
 from django.shortcuts import render, redirect
-from django.contrib.auth import login, authenticate
+from django.contrib.auth import login as auth_login  # Import avec alias pour éviter conflit
+from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.contrib import messages
 from django.views import View
@@ -14,7 +15,10 @@ import logging
 logger = logging.getLogger(__name__)
 
 def home(request):
-    return render(request, "home.html")
+    context = {'is_home': True}  # Indicateur pour la page d'accueil
+    return render(request, "home.html", context)
+def employee(request):
+    return render(request, "ITservBack/employe_dashboard.html")
 
 def login(request):  # Renommé pour éviter le conflit avec la fonction login importée
     return render(request, "login.html")
@@ -105,76 +109,88 @@ class SignupView(View):
             messages.error(request, f"Une erreur s'est produite : {str(e)}")
             return render(request, self.template_name)
 
+
+
+logger = logging.getLogger(__name__)
+
 class LoginView(View):
-    template_name = 'ITservBack/login/login.html'  # Votre template
+    template_name = 'login.html'
 
     @method_decorator(csrf_protect)
     def get(self, request):
+        logger.info("Méthode GET appelée pour afficher la page de login.")
         return render(request, self.template_name)
 
     @method_decorator(csrf_protect)
     def post(self, request):
         username = request.POST.get('username')
-        role = request.POST.get('role')  # Récupérer le rôle depuis le formulaire
+        password = request.POST.get('password')
+        role = request.POST.get('role')
 
         logger.info(f"Tentative de connexion pour {username} avec rôle {role}")
 
         try:
-            # Vérifier si l'utilisateur existe
             user = User.objects.get(username=username)
-            # Récupérer le mot de passe stocké dans auth_user (il a été généré automatiquement)
-            password = user.password  # Note : C'est haché, on ne peut pas l'utiliser directement
+            logger.info(f"Username '{username}' trouvé dans auth_user.")
 
-            # Authentifier avec le username et le mot de passe stocké (Django gère le hachage)
-            user = authenticate(request, username=username, password=None)  # On ne passe pas de mot de passe ici
-            if user is None:
-                # Si l'authentification échoue, on tente avec le mot de passe généré (mais il faut le récupérer autrement si modifié)
-                logger.warning(f"Échec initial de l'authentification pour {username}")
-                messages.error(request, "Erreur d'authentification. Utilisez le mot de passe envoyé par email.")
+            authenticated_user = authenticate(request, username=username, password=password)
+            if authenticated_user is None:
+                logger.warning(f"Échec : Mot de passe incorrect pour {username} dans auth_user.")
+                messages.error(request, "Nom d'utilisateur ou mot de passe incorrect.")
                 return render(request, self.template_name)
+            else:
+                logger.info(f"Mot de passe correct pour {username} dans auth_user.")
 
-            login(request, user)
+            auth_login(request, authenticated_user)
             logger.info(f"Connexion réussie pour {username}")
 
             try:
-                profil = Profil.objects.get(user=user)
-                poste = profil.poste.lower()
-
-                # Redirection basée sur le rôle et le poste
-                if role == 'entreprise' and poste == 'responsablerh':
-                    messages.success(request, "Bienvenue, Responsable RH !")
-                    return redirect('client_dashboard')
-                elif role == 'employe' and poste == 'employe':
-                    messages.success(request, "Bienvenue, Employé !")
-                    return redirect('technicien_dashboard')
-                elif poste == 'admin':
-                    messages.success(request, "Bienvenue, Administrateur !")
+                profil = Profil.objects.get(user=authenticated_user)
+                poste = profil.poste
+                logger.info(f"Poste '{poste}' trouvé pour {username} dans itServ_profil.")
+                # Vérifier si le rôle du formulaire correspond au poste de l'utilisateur
+                if (role == 'EMPLOYE' and poste != 'EMPLOYE') or (role == 'ResponsableRH' and poste != 'ResponsableRH'):
+                    logger.warning(f"Rôle '{role}' ne correspond pas au poste '{poste}' pour {username}.")
+                    if role == 'EMPLOYE':
+                        messages.error(request,
+                                       "Vous êtes un Responsable RH. Veuillez utiliser le formulaire Entreprise.")
+                    else:
+                        messages.error(request, "Vous êtes un Employé. Veuillez utiliser le formulaire Employé.")
+                    return render(request, self.template_name)
+                    # Connexion réussie si le rôle correspond
+                    auth_login(request, authenticated_user)
+                    logger.info(f"Connexion réussie pour {username}")
+                if poste == 'admin':
+                    logger.info(f"Redirection vers admin_dashboard pour {username}.")
                     return redirect('admin_dashboard')
+                elif poste == 'EMPLOYE':
+                    logger.info(f"Redirection vers employee pour {username}.")
+                    return redirect('employee')  # Notez le nom correct
+                elif poste == 'ResponsableRH':
+                    logger.info(f"Redirection vers responsablerh_dashboard pour {username}.")
+                    return redirect('responsablerh_dashboard')
                 else:
-                    messages.error(request, "Rôle non autorisé pour ce formulaire.")
+                    logger.warning(f"Poste '{poste}' non reconnu pour {username}.")
+                    messages.error(request, "Poste non reconnu.")
                     return render(request, self.template_name)
 
             except Profil.DoesNotExist:
-                logger.warning(f"Aucun profil trouvé pour {username}")
+                logger.warning(f"Aucun profil trouvé pour {username} dans itServ_profil.")
                 messages.error(request, "Profil non configuré. Contactez l'administrateur.")
                 return render(request, self.template_name)
 
         except User.DoesNotExist:
-            logger.warning(f"Utilisateur {username} non trouvé")
+            logger.warning(f"Utilisateur '{username}' non trouvé dans auth_user.")
             messages.error(request, "Nom d'utilisateur incorrect.")
             return render(request, self.template_name)
 
+# Ajout des vues manquantes
 def admin_dashboard(request):
     profil = Profil.objects.get(user=request.user)
-    context = {'poste': profil.poste.lower(), 'segment': 'dashboard'}
+    context = {'poste': profil.poste, 'is_home': False, 'segment': 'dashboard'}
     return render(request, 'ITservBack/layouts/base.html', context)
 
-def EMPLOYE_dashboard(request):
+def responsablerh_dashboard(request):
     profil = Profil.objects.get(user=request.user)
-    context = {'poste': profil.poste.lower(), 'segment': 'dashboard'}
-    return render(request, 'ITservBack/layouts/base.html', context)
-
-def ResponsableRH_dashboard(request):
-    profil = Profil.objects.get(user=request.user)
-    context = {'poste': profil.poste.lower(), 'segment': 'dashboard'}
-    return render(request, 'ITservBack/layouts/base.html', context)
+    context = {'poste': profil.poste, 'is_home': False, 'segment': 'dashboard'}
+    return render(request, 'ITservBack/dashboard_ResponsableRH.html', context)
