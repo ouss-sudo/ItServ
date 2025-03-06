@@ -1,0 +1,69 @@
+
+  .custom-card {
+    background: #ffffff;
+    border-radius: 15px;
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+
+  .custom-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15);
+  }
+
+  .custom-input, .custom-textarea, .custom-select {
+    border-color: #ced4da;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 1rem;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  }
+
+  .custom-input:focus, .custom-textarea:focus, .custom-select:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+    outline: none;
+  }
+
+  .custom-textarea {
+    resize: vertical;
+    min-height: 100px;
+  }
+
+  .custom-button {
+    background: linear-gradient(45deg, #0d6efd, #0dcaf0);
+    border: none;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 1.1rem;
+    font-weight: bold;
+    transition: background 0.3s ease, transform 0.3s ease;
+  }
+
+  .custom-button:hover {
+    background: linear-gradient(45deg, #0b5ed7, #0bbbe8);
+    transform: translateY(-2px);
+  }
+
+  .form-label.text-muted {
+    color: #6c757d !important;
+    font-weight: 500;
+  }
+
+  .invalid-feedback {
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+
+  .btn-primary:focus {
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.5);
+  }
+
+  .link-primary {
+    transition: color 0.3s ease;
+  }
+
+  .link-primary:hover {
+    color: #0b5ed7 !important;
+    text-decoration: underline;
+  }
