@@ -6,11 +6,12 @@ from django.contrib import messages
 from django.views import View
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect
-from .models import Profil
+from .models import Profil, UserLoginHistory  # Ajout de UserLoginHistory
 from django.core.mail import send_mail
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.contrib.auth.tokens import default_token_generator
+from django.utils import timezone
 import secrets
 import string
 import logging
@@ -143,23 +144,39 @@ class LoginView(View):
                 poste = profil.poste
                 logger.info(f"Poste '{poste}' trouvé pour {username} dans itServ_profil.")
 
-
                 if (role == 'EMPLOYE' and poste != 'EMPLOYE') or (role == 'ResponsableRH' and poste != 'ResponsableRH'):
                     logger.warning(f"Rôle '{role}' ne correspond pas au poste '{poste}' pour {username}.")
                     if role == 'EMPLOYE':
-                        messages.error(request,
-                                       "Vous êtes un Responsable RH. Veuillez utiliser le formulaire Entreprise.")
+                        messages.error(request, "Vous êtes un Responsable RH. Veuillez utiliser le formulaire Entreprise.")
                     else:
                         messages.error(request, "Vous êtes un Employé. Veuillez utiliser le formulaire Employé.")
                     return render(request, self.template_name)
 
+                # Enregistrer la première connexion si elle n'existe pas encore
+                if profil.first_login is None:
+                    profil.first_login = timezone.now()
+                    logger.info(f"Première connexion enregistrée pour {username} à {profil.first_login}.")
+
+                # Mettre à jour la dernière authentification
+                profil.last_authentication = timezone.now()
+                profil.save()
+                logger.info(f"Dernière authentification enregistrée pour {username} à {profil.last_authentication}.")
+
+                # Enregistrer l'historique de connexion
+                UserLoginHistory.objects.create(
+                    user=authenticated_user,
+                    login_time=timezone.now(),
+                    poste=poste
+                )
+                logger.info(f"Connexion enregistrée dans l'historique pour {username} à {timezone.now()}.")
+
                 auth_login(request, authenticated_user)
                 logger.info(f"Connexion réussie pour {username}")
 
-                # Vérifier si c'est la première connexion
+                # Vérifier si le mot de passe doit être changé
                 if profil.must_change_password:
-                    logger.info(f"Première connexion détectée pour {username}, redirection vers changer_password.")
-                    return redirect('changer_password')
+                    logger.info(f"Première connexion détectée pour {username}, redirection vers change_password.")
+                    return redirect('change_password')
 
                 # Redirection selon le poste
                 if poste == 'admin':
@@ -185,7 +202,6 @@ class LoginView(View):
             logger.warning(f"Utilisateur '{username}' non trouvé dans auth_user.")
             messages.error(request, "Nom d'utilisateur incorrect.")
             return render(request, self.template_name)
-
 class ChangePasswordView(View):
     template_name = 'ITservBack/login/changer_password.html'
 

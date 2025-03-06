@@ -56,7 +56,7 @@
               {% elif poste == 'EMPLOYE' %}
                 <li><a href="{% url 'employee' %}">Mon Tableau de Bord</a></li> <!-- Corrigé employe_dashboard en employee -->
               {% elif poste == 'ResponsableRH' %}
-                <li><a href="{% url 'responsablerh_dashboard' %}">Gestion RH</a></li>
+                <li><a href="{% url 'responsablerh_dashboard' %}">PLANING</a></li>
               {% endif %}
             {% endif %}
           {% endif %}
@@ -75,7 +75,7 @@
           {% elif poste == 'EMPLOYE' %}
             <a class="cta-btn d-none d-sm-block" href="{% url 'employee' %}">Employee Dashboard</a> <!-- Corrigé employe_dashboard en employee -->
           {% elif poste == 'ResponsableRH' %}
-            <a class="cta-btn d-none d-sm-block" href="{% url 'responsablerh_dashboard' %}">RH Dashboard</a>
+            <a class="cta-btn d-none d-sm-block" href="{% url 'responsablerh_dashboard' %}">AJOUTER EMPLOYEd</a>
           {% endif %}
           <a class="cta-btn d-none d-sm-block" href="{% url 'logout' %}">Logout</a> <!-- Bouton Logout ajouté -->
         {% else %}
