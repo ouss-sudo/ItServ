@@ -54,7 +54,7 @@
               {% if poste == 'admin' %}
                 <li><a href="{% url 'admin_dashboard' %}">Admin Panel</a></li>
               {% elif poste == 'EMPLOYE' %}
-                <li><a href="{% url 'employee' %}">Mon Tableau de Bord</a></li> <!-- Corrigé employe_dashboard en employee -->
+
               {% elif poste == 'ResponsableRH' %}
                 <li><a href="{% url 'responsablerh_dashboard' %}">PLANING</a></li>
               {% endif %}
@@ -73,11 +73,11 @@
           {% if poste == 'admin' %}
             <a class="cta-btn d-none d-sm-block" href="{% url 'admin_dashboard' %}">Admin Dashboard</a>
           {% elif poste == 'EMPLOYE' %}
-            <a class="cta-btn d-none d-sm-block" href="{% url 'employee' %}">Employee Dashboard</a> <!-- Corrigé employe_dashboard en employee -->
+
           {% elif poste == 'ResponsableRH' %}
             <a class="cta-btn d-none d-sm-block" href="{% url 'responsablerh_dashboard' %}">AJOUTER EMPLOYEd</a>
           {% endif %}
-          <a class="cta-btn d-none d-sm-block" href="{% url 'logout' %}">Logout</a> <!-- Bouton Logout ajouté -->
+          <a class="cta-btn d-none d-sm-block" href="{% url 'logout' %}">Logout</a> <!-- Bouton Logout commun -->
         {% else %}
           <a class="cta-btn d-none d-sm-block" href="{% url 'login' %}">Login</a>
         {% endif %}

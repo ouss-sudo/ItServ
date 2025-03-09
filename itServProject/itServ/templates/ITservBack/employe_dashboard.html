@@ -1,18 +1,310 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}Home - Medilab{% endblock %}
+{% block title %}Employee Dashboard - ITserv{% endblock %}
 
-{% block contentemploye %}
+{% block content %}
+<div class="container-fluid">
+    <div class="row justify-content-center">
+        <!-- Sidebar centrée -->
+        <div class="col-12 col-md-3 col-lg-2 sidebar mx-auto">
+            <div class="sidebar-logo mb-4">
+                <img src="{% static 'assets/img/logo.png' %}" alt="ITserv Logo" class="img-fluid">
+            </div>
+            <ul class="nav flex-column">
+                <li class="nav-item">
+                    <a href="{% url 'employee' %}" class="nav-link {% if request.path == '/employee/' %}active{% endif %}">
+                        <i class="bi bi-speedometer2 me-2"></i> Tableau de bord
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{% url 'employee' %}" class="nav-link {% if request.path == '/employee/' %}active{% endif %}">
+                        <i class="bi bi-file-earmark-text me-2"></i> Congés / Autorisations
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="{% url 'employee' %}" class="nav-link">
+                        <i class="bi bi-person me-2"></i> Demandes
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="#" class="nav-link">
+                        <i class="bi bi-clock-history me-2"></i> Historique
+                    </a>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Contenu principal ajusté pour s'adapter autour de la sidebar centrée -->
+        <div class="col-12 col-md-9 col-lg-10 main-content offset-md-0 offset-lg-0">
+            <!-- Tabs pour Congé, Autorisation et Historique -->
+            <ul class="nav nav-tabs mb-3">
+                <li class="nav-item">
+                    <a class="nav-link active" href="#conge" data-bs-toggle="tab">Congé</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="#autorisation" data-bs-toggle="tab">Autorisation</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="#historique" data-bs-toggle="tab">Historique de connexion</a>
+                </li>
+            </ul>
+
+            <div class="tab-content">
+                <div class="tab-pane fade show active" id="conge">
+                    <!-- Carte pour le formulaire de demande de congé (inclusion de leave_request.html) -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="card-title mb-0">Demande de congé</h5>
+                        </div>
+                        <div class="card-body">
+                            {% include 'leave_request.html' %}
+                             <div class="card mb-4">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="card-title mb-0">Filtre de recherche</h5>
+                        </div>
+                        <div class="card-body">
+                            <form method="get">
+                                <div class="row">
+                                    <div class="col-md-3 mb-3">
+                                        <label for="type_conge_filter" class="form-label">Type de congé</label>
+                                        <select class="form-select" id="type_conge_filter" name="type_conge">
+                                            <option value="">Tous</option>
+                                            {% for value, label in type_conge_choices %}
+                                                <option value="{{ value }}" {% if type_conge == value %}selected{% endif %}>{{ label }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="status_filter" class="form-label">État demande</label>
+                                        <select class="form-select" id="status_filter" name="status">
+                                            <option value="">Tous</option>
+                                            {% for value, label in status_choices %}
+                                                <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="start_date_from" class="form-label">Date Début (Du)</label>
+                                        <input type="date" class="form-control" id="start_date_from" name="start_date_from" value="{{ start_date_from }}">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="start_date_to" class="form-label">Date Début (Au)</label>
+                                        <input type="date" class="form-control" id="start_date_to" name="start_date_to" value="{{ start_date_to }}">
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-3 mb-3">
+                                        <label for="end_date_from" class="form-label">Date Fin (Du)</label>
+                                        <input type="date" class="form-control" id="end_date_from" name="end_date_from" value="{{ end_date_from }}">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="end_date_to" class="form-label">Date Fin (Au)</label>
+                                        <input type="date" class="form-control" id="end_date_to" name="end_date_to" value="{{ end_date_to }}">
+                                    </div>
+                                    <div class="col-md-6 mb-3 d-flex align-items-end justify-content-end">
+                                        <button type="submit" class="btn btn-primary me-2"><i class="bi bi-search me-2"></i>Rechercher</button>
+                                        <a href="{% url 'employee' %}" class="btn btn-outline-danger"><i class="bi bi-arrow-clockwise me-2"></i>Réinitialiser</a>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                            <!-- Ajuster le bouton pour correspondre au design -->
+                        </div>
+                         <div class="card">
+                        <div class="card-header bg-dark-teal text-white d-flex justify-content-between align-items-center">
+                            <h5 class="card-title mb-0">Liste de mes demandes de congé</h5>
+                            <div class="filter-input">
+                                <input type="text" class="form-control" placeholder="Filtrer parmi ces éléments..." id="filterInput" onkeyup="filterTable()">
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            {% include 'leave_list.html' %}
+                        </div>
+                    </div>
+                    </div>
 
 
-<html>
-<head>
-    <title>Employee Dashboard</title>
-</head>
-<body>
-    <h1>Bienvenue sur le tableau de bord des employés</h1>
-</body>
-</html>
+                <div class="tab-pane fade" id="autorisation">
+                    <p>Section Autorisation (à implémenter).</p>
+                </div>
+                <div class="tab-pane fade" id="historique">
+                    <!-- Carte pour l'historique de connexion -->
+                    <div class="card">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="card-title mb-0">Historique de connexion</h5>
+                        </div>
+                        <div class="card-body">
+                            {% if login_histories %}
+                                <table class="table table-striped table-bordered mx-auto" style="max-width: 800px; margin-bottom: 0;">
+                                    <thead>
+                                        <tr>
+                                            <th>Utilisateur</th>
+                                            <th>Date et heure de connexion</th>
+                                            <th>Poste</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for history in login_histories %}
+                                            <tr>
+                                                <td>{{ history.user.username }}</td>
+                                                <td>{{ history.login_time|date:"Y-m-d H:i" }}</td>
+                                                <td>{{ history.poste }}</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            {% else %}
+                                <p class="text-center">Aucun historique de connexion trouvé.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
 
+{% block extra_css %}
+<style>
+    /* Sidebar */
+    .sidebar {
+        min-height: 100vh;
+        background-color: #2c3e50;
+        color: white;
+        padding: 0;
+    }
+    .sidebar-logo img {
+        max-width: 100px;
+    }
+    .nav-link {
+        color: white !important;
+        padding: 10px 15px;
+        border-radius: 5px;
+        margin-bottom: 5px;
+    }
+    .nav-link:hover, .nav-link.active {
+        background-color: #1abc9c;
+    }
+    .nav-link i {
+        font-size: 1.2rem;
+    }
+
+    /* Main content */
+    .main-content {
+        padding: 20px;
+        background-color: #f5f6fa;
+    }
+    .card {
+        border-radius: 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .card-header {
+        border-top-left-radius: 10px;
+        border-top-right-radius: 10px;
+    }
+    .form-label {
+        font-weight: 500;
+    }
+    .btn-danger {
+        background-color: #e74c3c;
+        border-color: #e74c3c;
+    }
+    .btn-danger:hover {
+        background-color: #c0392b;
+        border-color: #c0392b;
+    }
+    .btn-primary {
+        background-color: #3498db;
+        border-color: #3498db;
+    }
+    .btn-primary:hover {
+        background-color: #2980b9;
+        border-color: #2980b9;
+    }
+    .btn-outline-danger {
+        color: #e74c3c;
+        border-color: #e74c3c;
+    }
+    .btn-outline-danger:hover {
+        background-color: #e74c3c;
+        color: white;
+    }
+    .nav-tabs .nav-link.active {
+        background-color: #3498db;
+        color: white;
+        border-color: #3498db;
+    }
+    .nav-tabs .nav-link {
+        color: #3498db;
+    }
+
+    /* Centrage de la sidebar */
+    .row.justify-content-center {
+        display: flex;
+        justify-content: center;
+    }
+    .sidebar.mx-auto {
+        margin: 0 auto;
+        max-width: 250px; /* Ajustez la largeur maximale selon vos besoins */
+    }
+
+    /* Style pour l'en-tête de filtrage */
+    .bg-dark-teal {
+        background-color: #1a3c50; /* Couleur bleu foncé */
+        padding: 10px 15px;
+    }
+    .filter-input input {
+        max-width: 200px; /* Ajustez la largeur selon vos besoins */
+        border-radius: 5px;
+    }
+
+    /* Ajustement pour éviter les marges indésirables */
+    .card-body {
+        padding-bottom: 0;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        function filterTable() {
+            var input = document.getElementById("filterInput");
+            var filter = input.value.toLowerCase();
+            var table = document.querySelector(".card-body table");
+            var tr = table.getElementsByTagName("tr");
+
+            if (!table) {
+                console.error("Tableau non trouvé dans .card-body");
+                return;
+            }
+
+            for (var i = 1; i < tr.length; i++) { // Commencer à 1 pour ignorer l'en-tête
+                var found = false;
+                var td = tr[i].getElementsByTagName("td");
+                for (var j = 0; j < td.length; j++) {
+                    var cell = td[j];
+                    if (cell) {
+                        if (cell.textContent.toLowerCase().indexOf(filter) > -1) {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                tr[i].style.display = found ? "" : "none";
+            }
+        }
+
+        // Ajouter un écouteur d'événements pour le filtrage
+        var input = document.getElementById("filterInput");
+        if (input) {
+            input.addEventListener("keyup", filterTable);
+        } else {
+            console.error("Input #filterInput non trouvé");
+        }
+    });
+</script>
 {% endblock %}

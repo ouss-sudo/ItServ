@@ -15,6 +15,13 @@ from django.utils import timezone
 import secrets
 import string
 import logging
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from .models import LeaveRequest
+from django.utils import timezone
+from django.core.exceptions import ValidationError
+
+
 
 
 logger = logging.getLogger(__name__)
@@ -22,17 +29,89 @@ logger = logging.getLogger(__name__)
 def home(request):
     context = {'is_home': True}  # Indicateur pour la page d'accueil
     return render(request, "home.html", context)
+
+@login_required
 def employee(request):
-    return render(request, "ITservBack/employe_dashboard.html")
+    try:
+        profil = Profil.objects.get(user=request.user)
+        poste = profil.poste
+    except Profil.DoesNotExist:
+        poste = 'EMPLOYE'
+
+    # Logique pour la liste des demandes de congé
+    if request.user.is_superuser:
+        leave_requests = LeaveRequest.objects.all().order_by('-created_at')
+    else:
+        leave_requests = LeaveRequest.objects.filter(employee=request.user).order_by('-created_at')
+
+    # Appliquer les filtres si une requête GET avec paramètres est envoyée
+    status = request.GET.get('status', '')
+    start_date_from = request.GET.get('start_date_from', '')
+
+    end_date_to = request.GET.get('end_date_to', '')
+
+
+    if status:
+        leave_requests = leave_requests.filter(status=status)
+    if start_date_from:
+        leave_requests = leave_requests.filter(start_date__gte=start_date_from)
+
+    if end_date_to:
+        leave_requests = leave_requests.filter(end_date__lte=end_date_to)
+
+    # Logique pour soumettre une nouvelle demande de congé
+    if request.method == 'POST':
+        start_date = request.POST.get('start_date')
+        end_date = request.POST.get('end_date')
+        reason = request.POST.get('reason')
+
+        if not start_date or not end_date or not reason:
+            messages.error(request, "Veuillez remplir tous les champs obligatoires.")
+        else:
+            try:
+                start_date = timezone.datetime.strptime(start_date, '%Y-%m-%d').date()
+                end_date = timezone.datetime.strptime(end_date, '%Y-%m-%d').date()
+                if start_date > end_date:
+                    raise ValidationError("La date de fin doit être postérieure à la date de début.")
+                if start_date < timezone.now().date():
+                    raise ValidationError("La date de début ne peut pas être dans le passé.")
+
+                leave = LeaveRequest(
+                    employee=request.user,
+                    start_date=start_date,
+                    end_date=end_date,
+                    reason=reason,
+                )
+                leave.save()
+                messages.success(request, "Demande de congé soumise avec succès !")
+                return redirect('employee')
+            except ValueError:
+                messages.error(request, "Format de date invalide. Utilisez AAAA-MM-JJ.")
+            except ValidationError as e:
+                messages.error(request, str(e))
+
+    # Récupérer les historiques de connexion
+    if request.user.is_superuser:
+        login_histories = UserLoginHistory.objects.all().order_by('user', '-login_time')
+    else:
+        login_histories = UserLoginHistory.objects.filter(user=request.user).order_by('-login_time')
+
+    context = {
+        'poste': poste,
+        'is_home': False,
+        'leave_requests': leave_requests,
+        'login_histories': login_histories,  # Ajouter les historiques de connexion au contexte
+    }
+    return render(request, "ITservBack/employe_dashboard.html", context)
 def logout_view(request):  # Nouvelle vue pour la déconnexion
     auth_logout(request)  # Déconnecte l'utilisateur
     logger.info("Utilisateur déconnecté avec succès.")
     messages.success(request, "Vous avez été déconnecté avec succès.")
     return redirect('home')
+
 def login(request):  # Renommé pour éviter le conflit avec la fonction login importée
     context = {'is_home': True}  # Indicateur pour la page d'accueil
     return render(request, "login.html",context)
-
 def homeback(request):
     return render(request, "ITservBack/layouts/base.html")
 # Ajout des vues manquantes
@@ -117,7 +196,8 @@ class LoginView(View):
     @method_decorator(csrf_protect)
     def get(self, request):
         logger.info("Méthode GET appelée pour afficher la page de login.")
-        return render(request, self.template_name)
+        context = {'is_home': True}
+        return render(request, self.template_name, context)
 
     @method_decorator(csrf_protect)
     def post(self, request):
@@ -135,7 +215,7 @@ class LoginView(View):
             if authenticated_user is None:
                 logger.warning(f"Échec : Mot de passe incorrect pour {username} dans auth_user.")
                 messages.error(request, "Nom d'utilisateur ou mot de passe incorrect.")
-                return render(request, self.template_name)
+                return render(request, self.template_name, {'is_home': True})
             else:
                 logger.info(f"Mot de passe correct pour {username} dans auth_user.")
 
@@ -150,7 +230,7 @@ class LoginView(View):
                         messages.error(request, "Vous êtes un Responsable RH. Veuillez utiliser le formulaire Entreprise.")
                     else:
                         messages.error(request, "Vous êtes un Employé. Veuillez utiliser le formulaire Employé.")
-                    return render(request, self.template_name)
+                    return render(request, self.template_name, {'is_home': True})
 
                 # Enregistrer la première connexion si elle n'existe pas encore
                 if profil.first_login is None:
@@ -178,6 +258,12 @@ class LoginView(View):
                     logger.info(f"Première connexion détectée pour {username}, redirection vers change_password.")
                     return redirect('change_password')
 
+                # Passer poste dans le contexte pour toutes les redirections
+                context = {
+                    'is_home': False,
+                    'poste': poste
+                }
+
                 # Redirection selon le poste
                 if poste == 'admin':
                     logger.info(f"Redirection vers admin_dashboard pour {username}.")
@@ -191,17 +277,17 @@ class LoginView(View):
                 else:
                     logger.warning(f"Poste '{poste}' non reconnu pour {username}.")
                     messages.error(request, "Poste non reconnu.")
-                    return render(request, self.template_name)
+                    return render(request, self.template_name, {'is_home': True})
 
             except Profil.DoesNotExist:
                 logger.warning(f"Aucun profil trouvé pour {username} dans itServ_profil.")
                 messages.error(request, "Profil non configuré. Contactez l'administrateur.")
-                return render(request, self.template_name)
+                return render(request, self.template_name, {'is_home': True})
 
         except User.DoesNotExist:
             logger.warning(f"Utilisateur '{username}' non trouvé dans auth_user.")
             messages.error(request, "Nom d'utilisateur incorrect.")
-            return render(request, self.template_name)
+            return render(request, self.template_name, {'is_home': True})
 class ChangePasswordView(View):
     template_name = 'ITservBack/login/changer_password.html'
 
@@ -335,3 +421,48 @@ class PasswordResetConfirmView(View):
         except (TypeError, ValueError, OverflowError, User.DoesNotExist):
             messages.error(request, "Le lien de réinitialisation est invalide.")
             return redirect('login')
+
+@login_required
+def leave_request(request):
+    if request.method == 'POST':
+        start_date = request.POST.get('start_date')
+        end_date = request.POST.get('end_date')
+        reason = request.POST.get('reason')
+
+        # Validation des dates
+        if not start_date or not end_date:
+            messages.error(request, "Please provide both start and end dates.")
+            return render(request, 'leave_request.html', {'error': 'Dates are required.'})
+
+        try:
+            start_date = timezone.datetime.strptime(start_date, '%Y-%m-%d').date()
+            end_date = timezone.datetime.strptime(end_date, '%Y-%m-%d').date()
+            if start_date > end_date:
+                raise ValidationError("End date must be after start date.")
+            if start_date < timezone.now().date():
+                raise ValidationError("Start date cannot be in the past.")
+        except ValueError:
+            messages.error(request, "Invalid date format. Use YYYY-MM-DD.")
+            return render(request, 'leave_request.html', {'error': 'Invalid date format.'})
+
+        # Créer la demande de congé
+        leave = LeaveRequest(
+            employee=request.user,
+            start_date=start_date,
+            end_date=end_date,
+            reason=reason
+        )
+        leave.save()
+        messages.success(request, "Leave request submitted successfully!")
+        return redirect('leave_request')
+
+    return render(request, 'leave_request.html')
+
+@login_required
+def leave_list(request):
+    if request.user.is_superuser:  # Si l'utilisateur est un admin
+        leave_requests = LeaveRequest.objects.all().order_by('-created_at')
+    else:  # Si c'est un employé normal
+        leave_requests = LeaveRequest.objects.filter(employee=request.user).order_by('-created_at')
+
+    return render(request, 'leave_list.html', {'leave_requests': leave_requests})

@@ -3,9 +3,10 @@ from . import views
 
 urlpatterns=[
     path("",views.home,name="home"),
-    path("login/",views.LoginView.as_view(),name="login"),
+   path("login/",views.LoginView.as_view(),name="login"),
     path("homeback/",views.homeback,name="homeback"),
-        path('signup/',views.SignupView.as_view(), name='signup'),
+    path('signup/',views.SignupView.as_view(), name='signup'),
+    #path('login/', views.logout_view(), name='login'),
 
     path('employe/', views.employee, name='employee'),
 path('admin/dashboard/', views.admin_dashboard, name='admin_dashboard'),
@@ -15,6 +16,9 @@ path('admin/dashboard/', views.admin_dashboard, name='admin_dashboard'),
     path('change-password/', views.ChangePasswordView.as_view(), name='change_password'),
     path('password/reset/', views.PasswordResetView.as_view(), name='password_reset'),
     path('reset-password/<uidb64>/<token>/', views.PasswordResetConfirmView.as_view(), name='password_reset_confirm'),
+    path('leave-request/', views.leave_request, name='leave_request'),
+    path('leave-list/', views.leave_list, name='leave_list'),
+
     # Nouvelle route
 
 ]
