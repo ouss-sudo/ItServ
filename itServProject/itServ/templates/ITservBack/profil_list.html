@@ -1,0 +1,224 @@
+{% extends "ITservBack/layouts/base.html" %}
+{% load static %}
+
+{% block title %}Admin Dashboard - ITserv{% endblock %}
+
+{% block content %}
+
+        <!-- Contenu principal -->
+        <div class="col-12 col-md-9 col-lg-10 main-content offset-md-0 offset-lg-0">
+            <!-- Carte pour la liste des profils -->
+            <div class="card">
+                <div class="card-header bg-dark-teal text-white">
+                    <h5 class="card-title mb-0">Liste des profils</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Champ de filtrage déplacé ici -->
+                    <div class="filter-input mb-3 text-end">
+                        <input type="text" class="form-control d-inline-block" style="width: 200px;" placeholder="Filtrer parmi ces éléments..." id="filterInput" onkeyup="filterTable()">
+                    </div>
+                    {% if profiles %}
+                        <div class="table-responsive">
+                            <table class="table custom-table">
+                                <thead class="bg-dark-teal text-white">
+                                    <tr>
+                                        <th>Utilisateur</th>
+                                        <th>Nom</th>
+                                        <th>Prénom</th>
+                                        <th>Téléphone</th>
+                                        <th>Adresse</th>
+                                        <th>Poste</th>
+                                        <th>Date de création</th>
+                                        <th>Dernière mise à jour</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for profile in profiles %}
+                                        <tr>
+                                            <td>{{ profile.user.username }}</td>
+                                            <td>{{ profile.nom }}</td>
+                                            <td>{{ profile.prenom }}</td>
+                                            <td>{{ profile.telephone }}</td>
+                                            <td>{{ profile.adresse }}</td>
+                                            <td>{{ profile.poste }}</td>
+                                            <td>{{ profile.date_creation|date:"Y-m-d H:i" }}</td>
+                                            <td>{{ profile.date_maj|date:"Y-m-d H:i" }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <!-- Pagination ajustée -->
+                        <nav aria-label="Page navigation">
+                            <ul class="pagination justify-content-end mt-3">
+                                <li class="page-item"><a class="page-link" href="#" aria-label="Previous"><span aria-hidden="true">&laquo;</span></a></li>
+                                <li class="page-item"><a class="page-link" href="#">1</a></li>
+                                <li class="page-item"><a class="page-link" href="#">2</a></li>
+                                <li class="page-item"><a class="page-link" href="#">3</a></li>
+                                <li class="page-item"><a class="page-link" href="#" aria-label="Next"><span aria-hidden="true">&raquo;</span></a></li>
+                            </ul>
+                            <p class="text-muted text-end mt-2">10 - 1 de 1956</p>
+                        </nav>
+                    {% else %}
+                        <p class="text-center">Aucun profil trouvé.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Sidebar */
+    .sidebar {
+        min-height: 100vh;
+        background-color: #2c3e50;
+        color: white;
+        padding: 0;
+    }
+    .sidebar-logo img {
+        max-width: 100px;
+    }
+    .nav-link {
+        color: white !important;
+        padding: 10px 15px;
+        border-radius: 5px;
+        margin-bottom: 5px;
+    }
+    .nav-link:hover, .nav-link.active {
+        background-color: #1abc9c;
+    }
+    .nav-link i {
+        font-size: 1.2rem;
+    }
+
+    /* Main content */
+    .main-content {
+        padding: 20px;
+        background-color: #f5f6fa;
+    }
+    .card {
+        border-radius: 10px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .card-header {
+        border-top-left-radius: 10px;
+        border-top-right-radius: 10px;
+        padding: 10px 15px;
+    }
+    .bg-dark-teal {
+        background-color: #1a3c50; /* Bleu foncé comme dans la photo */
+        padding: 10px 15px;
+    }
+    .filter-input input {
+        max-width: 200px;
+        border-radius: 5px;
+    }
+    /* Style personnalisé pour le tableau avec bordures noires */
+    .custom-table {
+        width: 100%;
+        border-collapse: collapse; /* S'assurer que les bordures se touchent */
+        border: 1px solid #000000; /* Bordure noire pour le tableau */
+    }
+    .custom-table th, .custom-table td {
+        border: 1px solid #000000 !important; /* Bordure noire pour les cellules */
+        text-align: center;
+        vertical-align: middle;
+        padding: 8px;
+        white-space: nowrap; /* Empêche le texte de passer à la ligne */
+        overflow: hidden;
+        text-overflow: ellipsis; /* Ajoute "..." si le texte est trop long */
+    }
+    /* Ajustement des largeurs des colonnes */
+    .custom-table th:nth-child(1), .custom-table td:nth-child(1) { /* Utilisateur */
+        max-width: 150px;
+    }
+    .custom-table th:nth-child(2), .custom-table td:nth-child(2) { /* Nom */
+        max-width: 100px;
+    }
+    .custom-table th:nth-child(3), .custom-table td:nth-child(3) { /* Prénom */
+        max-width: 100px;
+    }
+    .custom-table th:nth-child(4), .custom-table td:nth-child(4) { /* Téléphone */
+        max-width: 120px;
+    }
+    .custom-table th:nth-child(5), .custom-table td:nth-child(5) { /* Adresse */
+        max-width: 150px;
+    }
+    .custom-table th:nth-child(6), .custom-table td:nth-child(6) { /* Poste */
+        max-width: 100px;
+    }
+    .custom-table th:nth-child(7), .custom-table td:nth-child(7) { /* Date de création */
+        max-width: 150px;
+    }
+    .custom-table th:nth-child(8), .custom-table td:nth-child(8) { /* Dernière mise à jour */
+        max-width: 150px;
+    }
+    .custom-table thead th {
+        border-bottom: 2px solid #000000 !important; /* Bordure plus épaisse pour l'en-tête */
+    }
+    /* Alternance de couleurs pour les lignes */
+    .custom-table tbody tr:nth-child(odd) {
+        background-color: #f8f9fa; /* Gris clair pour les lignes impaires */
+    }
+    .custom-table tbody tr:nth-child(even) {
+        background-color: #ffffff; /* Blanc pour les lignes paires */
+    }
+    /* Responsive table */
+    .table-responsive {
+        overflow-x: auto;
+    }
+    .pagination {
+        margin-bottom: 0;
+    }
+    .page-link {
+        color: #1a3c50;
+    }
+    .page-link:hover {
+        background-color: #1abc9c;
+        color: white;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        function filterTable() {
+            var input = document.getElementById("filterInput");
+            var filter = input.value.toLowerCase();
+            var table = document.querySelector(".card-body table");
+            var tr = table ? table.getElementsByTagName("tr") : [];
+
+            if (!table) {
+                console.warn("Aucun tableau trouvé dans .card-body, filtrage ignoré.");
+                return;
+            }
+
+            for (var i = 1; i < tr.length; i++) {
+                var found = false;
+                var td = tr[i].getElementsByTagName("td");
+                for (var j = 0; j < td.length; j++) {
+                    var cell = td[j];
+                    if (cell) {
+                        if (cell.textContent.toLowerCase().indexOf(filter) > -1) {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                tr[i].style.display = found ? "" : "none";
+            }
+        }
+
+        var input = document.getElementById("filterInput");
+        if (input) {
+            input.addEventListener("keyup", filterTable);
+        } else {
+            console.error("Input #filterInput non trouvé");
+        }
+    });
+</script>
+{% endblock %}

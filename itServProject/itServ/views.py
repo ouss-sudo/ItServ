@@ -13,11 +13,13 @@ from django.utils.encoding import force_bytes, force_str
 from django.contrib.auth.tokens import default_token_generator
 from django.utils import timezone
 import secrets
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+from django.contrib import messages
 import string
 import logging
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
-from .models import LeaveRequest
+from .models import Conge,TypeConge
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 
@@ -40,27 +42,34 @@ def employee(request):
 
     # Logique pour la liste des demandes de congé
     if request.user.is_superuser:
-        leave_requests = LeaveRequest.objects.all().order_by('-created_at')
+        leave_requests = Conge.objects.all().order_by('-created_at')
     else:
-        leave_requests = LeaveRequest.objects.filter(employee=request.user).order_by('-created_at')
+        leave_requests = Conge.objects.filter(employee=request.user).order_by('-created_at')
 
     # Appliquer les filtres si une requête GET avec paramètres est envoyée
+    type_conge = request.GET.get('type_conge', '')
     status = request.GET.get('status', '')
     start_date_from = request.GET.get('start_date_from', '')
-
+    start_date_to = request.GET.get('start_date_to', '')
+    end_date_from = request.GET.get('end_date_from', '')
     end_date_to = request.GET.get('end_date_to', '')
 
-
+    if type_conge:
+        leave_requests = leave_requests.filter(type_conge__id=type_conge)
     if status:
         leave_requests = leave_requests.filter(status=status)
     if start_date_from:
         leave_requests = leave_requests.filter(start_date__gte=start_date_from)
-
+    if start_date_to:
+        leave_requests = leave_requests.filter(start_date__lte=start_date_to)
+    if end_date_from:
+        leave_requests = leave_requests.filter(end_date__gte=end_date_from)
     if end_date_to:
         leave_requests = leave_requests.filter(end_date__lte=end_date_to)
 
     # Logique pour soumettre une nouvelle demande de congé
-    if request.method == 'POST':
+    if request.method == 'POST' and 'type_conge' in request.POST and 'start_date' in request.POST:
+        type_conge_id = request.POST.get('type_conge')
         start_date = request.POST.get('start_date')
         end_date = request.POST.get('end_date')
         reason = request.POST.get('reason')
@@ -76,8 +85,9 @@ def employee(request):
                 if start_date < timezone.now().date():
                     raise ValidationError("La date de début ne peut pas être dans le passé.")
 
-                leave = LeaveRequest(
+                leave = Conge(
                     employee=request.user,
+                    type_conge_id=type_conge_id,
                     start_date=start_date,
                     end_date=end_date,
                     reason=reason,
@@ -90,17 +100,32 @@ def employee(request):
             except ValidationError as e:
                 messages.error(request, str(e))
 
+    # Logique pour ajouter un nouveau type de congé
+    if request.method == 'POST' and 'new_type_conge' in request.POST:
+        new_type = request.POST.get('new_type_conge')
+        if new_type:
+            try:
+                TypeConge.objects.create(type=new_type)
+                messages.success(request, "Nouveau type de congé ajouté avec succès !")
+            except Exception as e:
+                messages.error(request, f"Erreur lors de l'ajout : {str(e)}")
+        return redirect('employee')
+
     # Récupérer les historiques de connexion
     if request.user.is_superuser:
         login_histories = UserLoginHistory.objects.all().order_by('user', '-login_time')
     else:
         login_histories = UserLoginHistory.objects.filter(user=request.user).order_by('-login_time')
 
+    types_conge = TypeConge.objects.filter(flag_active=True)
+
     context = {
         'poste': poste,
         'is_home': False,
         'leave_requests': leave_requests,
-        'login_histories': login_histories,  # Ajouter les historiques de connexion au contexte
+        'types_conge': types_conge,
+        'status_choices': Conge._meta.get_field('status').choices,
+        'login_histories': login_histories,
     }
     return render(request, "ITservBack/employe_dashboard.html", context)
 def logout_view(request):  # Nouvelle vue pour la déconnexion
@@ -139,11 +164,11 @@ class SignupView(View):
         tel = request.POST.get('tel')
         adresse = request.POST.get('adresse')
         poste = request.POST.get('poste')
+        username = request.POST.get('username')
+       # alphabet = string.ascii_lowercase + string.digits
 
-        alphabet = string.ascii_lowercase + string.digits
-        username = ''.join(secrets.choice(alphabet) for _ in range(8))
-        while User.objects.filter(username=username).exists():
-            username = ''.join(secrets.choice(alphabet) for _ in range(8))
+       # while User.objects.filter(username=username).exists():
+      #      username = ''.join(secrets.choice(alphabet) for _ in range(8))
 
         alphabet = string.ascii_letters + string.digits + string.punctuation
         password = ''.join(secrets.choice(alphabet) for _ in range(12))
@@ -446,7 +471,7 @@ def leave_request(request):
             return render(request, 'leave_request.html', {'error': 'Invalid date format.'})
 
         # Créer la demande de congé
-        leave = LeaveRequest(
+        leave = Conge(
             employee=request.user,
             start_date=start_date,
             end_date=end_date,
@@ -461,8 +486,117 @@ def leave_request(request):
 @login_required
 def leave_list(request):
     if request.user.is_superuser:  # Si l'utilisateur est un admin
-        leave_requests = LeaveRequest.objects.all().order_by('-created_at')
+        leave_requests = Conge.objects.all().order_by('-created_at')
     else:  # Si c'est un employé normal
-        leave_requests = LeaveRequest.objects.filter(employee=request.user).order_by('-created_at')
+        leave_requests = Conge.objects.filter(employee=request.user).order_by('-created_at')
 
     return render(request, 'leave_list.html', {'leave_requests': leave_requests})
+@login_required
+def list_profil(request):
+        profiles = Profil.objects.all().order_by('user__username')
+        paginator = Paginator(profiles, 10)  # 10 profils par page
+        page = request.GET.get('page')
+        try:
+            profiles_page = paginator.page(page)
+        except PageNotAnInteger:
+            profiles_page = paginator.page(1)
+        except EmptyPage:
+            profiles_page = paginator.page(paginator.num_pages)
+        context = {
+            'profiles': profiles_page,
+        }
+        return render(request, "ITservBack/profil_list.html", context)
+
+
+@login_required
+def responsable_rh_dashboard(request):
+    try:
+        profil = Profil.objects.get(user=request.user)
+        if profil.poste != 'ResponsableRH':
+            messages.error(request, "Vous n'êtes pas autorisé à accéder à ce tableau de bord.")
+            return redirect('employee')
+    except Profil.DoesNotExist:
+        messages.error(request, "Profil non trouvé.")
+        return redirect('employee')
+
+    # Récupérer et filtrer les demandes de congé
+    leave_requests = Conge.objects.all().order_by('-created_at')
+    type_conge = request.GET.get('type_conge', '')
+    status = request.GET.get('status', '')
+    start_date_from = request.GET.get('start_date_from', '')
+    start_date_to = request.GET.get('start_date_to', '')
+    end_date_from = request.GET.get('end_date_from', '')
+    end_date_to = request.GET.get('end_date_to', '')
+
+    if type_conge:
+        leave_requests = leave_requests.filter(type_conge__type=type_conge)
+    if status:
+        leave_requests = leave_requests.filter(status=status)
+    if start_date_from:
+        leave_requests = leave_requests.filter(start_date__gte=start_date_from)
+    if start_date_to:
+        leave_requests = leave_requests.filter(start_date__lte=start_date_to)
+    if end_date_from:
+        leave_requests = leave_requests.filter(end_date__gte=end_date_from)
+    if end_date_to:
+        leave_requests = leave_requests.filter(end_date__lte=end_date_to)
+
+    # Pagination pour les demandes de congé
+    leave_paginator = Paginator(leave_requests, 10)  # 10 par page
+    leave_page = request.GET.get('leave_page', 1)  # Utiliser 'leave_page' pour éviter les conflits
+    try:
+        leave_requests = leave_paginator.page(leave_page)
+    except PageNotAnInteger:
+        leave_requests = leave_paginator.page(1)
+    except EmptyPage:
+        leave_requests = leave_paginator.page(leave_paginator.num_pages)
+
+    # Récupérer et filtrer l'historique de connexion
+    login_histories = UserLoginHistory.objects.all().order_by('user', '-login_time')
+    user_filter = request.GET.get('user_filter', '')
+    if user_filter:
+        login_histories = login_histories.filter(user__username__icontains=user_filter)
+
+    # Pagination pour l'historique de connexion
+    history_paginator = Paginator(login_histories, 10)  # 10 par page
+    history_page = request.GET.get('history_page', 1)  # Utiliser 'history_page'
+    try:
+        login_histories = history_paginator.page(history_page)
+    except PageNotAnInteger:
+        login_histories = history_paginator.page(1)
+    except EmptyPage:
+        login_histories = history_paginator.page(history_paginator.num_pages)
+
+    context = {
+        'leave_requests': leave_requests,
+        'types_conge': TypeConge.objects.filter(flag_active=True),
+        'status_choices': Conge._meta.get_field('status').choices,
+        'type_conge': type_conge,
+        'status': status,
+        'start_date_from': start_date_from,
+        'start_date_to': start_date_to,
+        'end_date_from': end_date_from,
+        'end_date_to': end_date_to,
+        'login_histories': login_histories,
+        'user_filter': user_filter,
+    }
+    return render(request, "ITservBack/dashboard_ResponsableRH.html ", context)
+
+
+@login_required
+def update_leave_status(request, leave_id, status):
+    if request.user.profil.poste != 'ResponsableRH':
+        messages.error(request, "Vous n'êtes pas autorisé à effectuer cette action.")
+        return redirect('responsable_rh_dashboard')
+
+    try:
+        leave = Conge.objects.get(id=leave_id)
+        if status in ['approved', 'rejected']:
+            leave.status = status
+            leave.save()
+            messages.success(request, f"La demande de congé a été {status} avec succès.")
+        else:
+            messages.error(request, "Statut invalide.")
+    except Conge.DoesNotExist:
+        messages.error(request, "Demande de congé introuvable.")
+    return redirect('responsable_rh_dashboard')

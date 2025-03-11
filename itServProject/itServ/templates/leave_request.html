@@ -4,33 +4,127 @@
 
 {% block contentleave_request %}
 <div class="card-body">
-                            {% if messages %}
-                                {% for message in messages %}
-                                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
-                                        {{ message }}
-                                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                                    </div>
-                                {% endfor %}
-                            {% endif %}
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
 
-                            <form method="post">
-                                {% csrf_token %}
-                                <div class="mb-3">
-                                    <label for="start_date" class="form-label">Date de début</label>
-                                    <input type="date" class="form-control" id="start_date" name="start_date" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="end_date" class="form-label">Date de fin</label>
-                                    <input type="date" class="form-control" id="end_date" name="end_date" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label for="reason" class="form-label">Raison</label>
-                                    <textarea class="form-control" id="reason" name="reason" rows="3" required></textarea>
-                                </div>
-                                <div class="text-end">
-                                    <button type="submit" class="btn btn-danger">Enregistrer</button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
+    <form method="post">
+        {% csrf_token %}
+        <div class="mb-3">
+            <label for="type_conge" class="form-label">Type de congé</label>
+            <select class="form-control" id="type_conge" name="type_conge" required>
+                <option value="" selected disabled>Choisissez un type</option>
+                {% for type in types_conge %}
+                    <option value="{{ type.id }}">{{ type.type }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="start_date" class="form-label">Date de début</label>
+            <input type="date" class="form-control" id="start_date" name="start_date" required>
+        </div>
+        <div class="mb-3">
+            <label for="end_date" class="form-label">Date de fin</label>
+            <input type="date" class="form-control" id="end_date" name="end_date" required>
+        </div>
+        <div class="mb-3">
+            <label for="reason" class="form-label">Raison</label>
+            <textarea class="form-control" id="reason" name="reason" rows="3" required></textarea>
+        </div>
+        <div class="text-end">
+            <button type="submit" class="btn btn-danger">Enregistrer</button>
+        </div>
+    </form>
+
+    <!-- Bouton pour afficher/masquer la carte -->
+    <div class="text-end mt-3">
+        <button type="button" class="btn btn-primary" id="toggleAddType">Ajouter un type de congé</button>
+    </div>
+
+    <!-- Carte pour ajouter un type de congé (cachée par défaut) -->
+    <div class="card mt-3" id="addTypeCard" style="display: none;">
+        <div class="card-header bg-primary text-white">
+            <h5 class="card-title mb-0">Ajouter un nouveau type de congé</h5>
+        </div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="new_type_conge" class="form-label">Nouveau type de congé</label>
+                    <input type="text" class="form-control" id="new_type_conge" name="new_type_conge" required>
+                </div>
+                <div class="text-end">
+                    <button type="submit" class="btn btn-success">Sauvegarder</button>
+                    <button type="button" class="btn btn-secondary" id="cancelAddType">Annuler</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Gestion du bouton pour afficher/masquer la carte
+        const toggleButton = document.getElementById('toggleAddType');
+        const addTypeCard = document.getElementById('addTypeCard');
+        const cancelButton = document.getElementById('cancelAddType');
+
+        toggleButton.addEventListener('click', function() {
+            if (addTypeCard.style.display === 'none') {
+                addTypeCard.style.display = 'block';
+                toggleButton.textContent = 'Masquer l’ajout';
+            } else {
+                addTypeCard.style.display = 'none';
+                toggleButton.textContent = 'Ajouter un type de congé';
+            }
+        });
+
+        cancelButton.addEventListener('click', function() {
+            addTypeCard.style.display = 'none';
+            toggleButton.textContent = 'Ajouter un type de congé';
+        });
+
+        // Filtrage existant (si nécessaire)
+        function filterTable() {
+            var input = document.getElementById("filterInput");
+            var filter = input.value.toLowerCase();
+            var table = document.querySelector(".card-body table");
+            var tr = table.getElementsByTagName("tr");
+
+            if (!table) {
+                console.error("Tableau non trouvé dans .card-body");
+                return;
+            }
+
+            for (var i = 1; i < tr.length; i++) {
+                var found = false;
+                var td = tr[i].getElementsByTagName("td");
+                for (var j = 0; j < td.length; j++) {
+                    var cell = td[j];
+                    if (cell) {
+                        if (cell.textContent.toLowerCase().indexOf(filter) > -1) {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                tr[i].style.display = found ? "" : "none";
+            }
+        }
+
+        var input = document.getElementById("filterInput");
+        if (input) {
+            input.addEventListener("keyup", filterTable);
+        } else {
+            console.error("Input #filterInput non trouvé");
+        }
+    });
+</script>
 {% endblock %}

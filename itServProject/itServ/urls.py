@@ -18,7 +18,9 @@ path('admin/dashboard/', views.admin_dashboard, name='admin_dashboard'),
     path('reset-password/<uidb64>/<token>/', views.PasswordResetConfirmView.as_view(), name='password_reset_confirm'),
     path('leave-request/', views.leave_request, name='leave_request'),
     path('leave-list/', views.leave_list, name='leave_list'),
-
+    path('list/', views.list_profil, name='list'),  # Nouvelle URL pour le tableau de bord admin
+    path('responsable_rh/', views.responsable_rh_dashboard, name='responsable_rh_dashboard'),
+    path('responsable_rh/leave/<int:leave_id>/status/<str:status>/', views.update_leave_status, name='update_leave_status'),
     # Nouvelle route
 
 ]
