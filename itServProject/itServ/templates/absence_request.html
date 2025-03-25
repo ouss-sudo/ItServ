@@ -1,0 +1,103 @@
+{% load static %}
+
+{% block content %}
+<div class="card-body">
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="form-group mb-3">
+            <label for="type_absence" class="form-label">Type d'absence</label>
+            <select name="type_absence" id="type_absence" class="form-control" required>
+                <option value="">Sélectionner un type</option>
+                {% for type in types_absence %}
+                    <option value="{{ type.id }}">{{ type.type }}</option>
+                {% empty %}
+                    <option value="" disabled>Aucun type d'absence disponible</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group mb-3">
+            <label for="start_date" class="form-label">Date de début</label>
+            <input type="date" name="start_date" id="start_date" class="form-control" required>
+        </div>
+        <div class="form-group mb-3">
+            <label for="end_date" class="form-label">Date de fin</label>
+            <input type="date" name="end_date" id="end_date" class="form-control" required>
+        </div>
+        <div class="form-group mb-3">
+            <label for="reason" class="form-label">Raison</label>
+            <textarea name="reason" id="reason" class="form-control" rows="3" required></textarea>
+        </div>
+        <div class="form-group mb-3">
+            <label for="image" class="form-label">Preuve (image)</label>
+            <input type="file" name="image" id="image" class="form-control-file" accept="image/*">
+        </div>
+        <div class="text-end">
+            <button type="submit" class="btn btn-danger">Enregistrer</button>
+        </div>
+    </form>
+
+    <!-- Bouton pour afficher/masquer la carte -->
+    {% if user.profil.poste == 'ResponsableRH' or user.is_superuser %}
+    <div class="text-end mt-3">
+        <button type="button" class="btn btn-primary" id="toggleAddTypeAbsence">Ajouter un type d'absence</button>
+    </div>
+
+    <!-- Carte pour ajouter un type d'absence (cachée par défaut) -->
+    <div class="card mt-3" id="addTypeAbsenceCard" style="display: none;">
+        <div class="card-header bg-primary text-white">
+            <h5 class="card-title mb-0">Ajouter un nouveau type d'absence</h5>
+        </div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="new_type_absence" class="form-label">Nouveau type d'absence</label>
+                    <input type="text" class="form-control" id="new_type_absence" name="new_type_absence" required>
+                </div>
+                <div class="text-end">
+                    <button type="submit" class="btn btn-success">Sauvegarder</button>
+                    <button type="button" class="btn btn-secondary" id="cancelAddTypeAbsence">Annuler</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Gestion du bouton pour afficher/masquer la carte
+        const toggleButton = document.getElementById('toggleAddTypeAbsence');
+        const addTypeCard = document.getElementById('addTypeAbsenceCard');
+        const cancelButton = document.getElementById('cancelAddTypeAbsence');
+
+        if (toggleButton && addTypeCard && cancelButton) {
+            toggleButton.addEventListener('click', function() {
+                if (addTypeCard.style.display === 'none') {
+                    addTypeCard.style.display = 'block';
+                    toggleButton.textContent = "Masquer l’ajout";
+                } else {
+                    addTypeCard.style.display = 'none';
+                    toggleButton.textContent = "Ajouter un type d'absence";
+                }
+            });
+
+            cancelButton.addEventListener('click', function() {
+                addTypeCard.style.display = 'none';
+                toggleButton.textContent = "Ajouter un type d'absence";
+            });
+        }
+    });
+</script>
+{% endblock %}

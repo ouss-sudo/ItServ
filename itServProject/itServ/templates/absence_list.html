@@ -1,0 +1,79 @@
+{% load static %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Liste des absences</h2>
+
+    <!-- Filter Form -->
+    <form method="get" class="mb-3">
+        <div class="row">
+            <div class="col-md-3">
+                <select name="type_absence" class="form-control">
+                    <option value="">Tous les types</option>
+                    {% for type in types_absence %}
+                        <option value="{{ type.id }}">{{ type.type }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select name="status" class="form-control">
+                    <option value="">Tous les statuts</option>
+                    {% for status_value, status_label in status_choices %}
+                        <option value="{{ status_value }}">{{ status_label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <td>
+                {% if absence.image %}
+                    <a href="{{ absence.image.url }}" target="_blank">
+                        <img src="{{ absence.image.url }}" alt="Justificatif" style="max-width: 100px;">
+                    </a>
+                {% else %}
+                    Aucune image
+                {% endif %}
+            </td>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-primary">Filtrer</button>
+            </div>
+        </div>
+    </form>
+
+<!-- absence_list.html -->
+<table class="table table-bordered">
+    <thead>
+        <tr>
+            <th>Type</th>
+            <th>Date Début</th>
+            <th>Date Fin</th>
+            <th>Raison</th>
+            <th>Statut</th>
+            <th>Image</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for absence in absence_requests %}
+        <tr>
+            <td>{{ absence.type_absence.type }}</td>
+            <td>{{ absence.start_date }}</td>
+            <td>{{ absence.end_date }}</td>
+            <td>{{ absence.reason }}</td>
+            <td>{{ absence.get_status_display }}</td>
+            <td>
+                {% if absence.image %}
+                    <a href="{{ absence.image.url }}" target="_blank">
+                        <img src="{{ absence.image.url }}" alt="Justificatif" style="max-width: 100px;">
+                    </a>
+                {% else %}
+                    Aucune image
+                {% endif %}
+            </td>
+        </tr>
+        {% empty %}
+        <tr>
+            <td colspan="6">Aucune demande d'absence enregistrée</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endblock %}

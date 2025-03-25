@@ -1,5 +1,4 @@
 {% load static %}
-
 <header id="header" class="header sticky-top">
   <div class="topbar d-flex align-items-center">
     <div class="container d-flex justify-content-center justify-content-md-between">
@@ -54,10 +53,30 @@
               {% if poste == 'admin' %}
                 <li><a href="{% url 'admin_dashboard' %}">Admin Panel</a></li>
               {% elif poste == 'EMPLOYE' %}
-
+                <!-- <li><a href="{% url 'employee' %}">Employee Dashboard</a></li> -->
               {% elif poste == 'ResponsableRH' %}
                 <li><a href="{% url 'responsablerh_dashboard' %}">PLANING</a></li>
               {% endif %}
+
+              <!-- Notification Icon -->
+              <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" href="#" id="notificationDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                  <i class="bi bi-bell"></i>
+                  <span id="unread-count" class="badge bg-danger rounded-pill">{{ unread_notifications_count }}</span>
+                </a>
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="notificationDropdown" id="notification-list">
+                  {% for notification in notifications %}
+                    <li>
+                      <a class="dropdown-item {% if not notification.is_read %}unread{% endif %}" href="#" data-notification-id="{{ notification.id }}" onclick="markAsRead(event, {{ notification.id }})">
+                        {{ notification.message }} <br>
+                        <small>{{ notification.created_at|date:"Y-m-d H:i" }}</small>
+                      </a>
+                    </li>
+                  {% empty %}
+                    <li><a class="dropdown-item" href="#">Aucune notification</a></li>
+                  {% endfor %}
+                </ul>
+              </li>
             {% endif %}
           {% endif %}
         </ul>
@@ -73,11 +92,11 @@
           {% if poste == 'admin' %}
             <a class="cta-btn d-none d-sm-block" href="{% url 'admin_dashboard' %}">Admin Dashboard</a>
           {% elif poste == 'EMPLOYE' %}
-
+            <!-- <a class="cta-btn d-none d-sm-block" href="{% url 'employee' %}">Employee Dashboard</a> -->
           {% elif poste == 'ResponsableRH' %}
-            <a class="cta-btn d-none d-sm-block" href="{% url 'responsablerh_dashboard' %}">AJOUTER EMPLOYEd</a>
+            <a class="cta-btn d-none d-sm-block" href="{% url 'responsablerh_dashboard' %}">AJOUTER EMPLOYÉ</a>
           {% endif %}
-          <a class="cta-btn d-none d-sm-block" href="{% url 'logout' %}">Logout</a> <!-- Bouton Logout commun -->
+          <a class="cta-btn d-none d-sm-block" href="{% url 'logout' %}">Logout</a>
         {% else %}
           <a class="cta-btn d-none d-sm-block" href="{% url 'login' %}">Login</a>
         {% endif %}
@@ -86,6 +105,9 @@
   </div>
 </header>
 
-<!-- Contenu spécifique au template -->
-{% block content %}
-{% endblock %}
+<style>
+  .dropdown-item.unread {
+      background-color: #f8d7da; /* Light red background for unread notifications */
+      font-weight: bold;
+  }
+</style>

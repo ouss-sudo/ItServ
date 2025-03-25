@@ -70,11 +70,13 @@ WSGI_APPLICATION = 'itServProject.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
-
+# settings.py
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'itserv',
+        'NAME': 'postgres',
         'USER': 'postgres',
         'PASSWORD': 'postgres',
         'HOST': 'localhost',
@@ -127,7 +129,7 @@ USE_TZ = True
 
 STATIC_URL = '/assets/'
 STATICFILES_DIRS = [
-    BASE_DIR / "ItservApp",
+    BASE_DIR / "Itserv",
 ]
 
 

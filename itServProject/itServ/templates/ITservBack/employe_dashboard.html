@@ -9,7 +9,7 @@
         <!-- Sidebar centrée -->
         <div class="col-12 col-md-3 col-lg-2 sidebar mx-auto">
             <div class="sidebar-logo mb-4">
-                <img src="{% static 'assets/img/logo.png' %}" alt="ITserv Logo" class="img-fluid">
+                <!-- <img src="{% static 'assets/img/logo.png' %}" alt="ITserv Logo" class="img-fluid"> -->
             </div>
             <ul class="nav flex-column">
                 <li class="nav-item">
@@ -44,6 +44,12 @@
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="#autorisation" data-bs-toggle="tab">Autorisation</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="#absences" data-bs-toggle="tab">Absences</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="#pointage" data-bs-toggle="tab">pointage</a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="#historique" data-bs-toggle="tab">Historique de connexion</a>
@@ -98,14 +104,6 @@
                                     </div>
                                 </div>
                                 <div class="row">
-                                    <div class="col-md-3 mb-3">
-                                        <label for="end_date_from" class="form-label">Date Fin (Du)</label>
-                                        <input type="date" class="form-control" id="end_date_from" name="end_date_from" value="{{ end_date_from }}">
-                                    </div>
-                                    <div class="col-md-3 mb-3">
-                                        <label for="end_date_to" class="form-label">Date Fin (Au)</label>
-                                        <input type="date" class="form-control" id="end_date_to" name="end_date_to" value="{{ end_date_to }}">
-                                    </div>
                                     <div class="col-md-6 mb-3 d-flex align-items-end justify-content-end">
                                         <button type="submit" class="btn btn-primary me-2"><i class="bi bi-search me-2"></i>Rechercher</button>
                                         <a href="{% url 'employee' %}" class="btn btn-outline-danger"><i class="bi bi-arrow-clockwise me-2"></i>Réinitialiser</a>
@@ -117,7 +115,7 @@
 
                     <!-- Carte pour la liste des demandes de congé -->
                     <div class="card">
-                        <div class="card-header bg-dark-teal text-white d-flex justify-content-between align-items-center">
+                        <div class="card-header bg-dark-teal text-red d-flex justify-content-between align-items-center">
                             <h5 class="card-title mb-0">Liste de mes demandes de congé</h5>
                             <div class="filter-input">
                                 <input type="text" class="form-control" placeholder="Filtrer parmi ces éléments..." id="filterInput" onkeyup="filterTable()">
@@ -132,6 +130,108 @@
                 <div class="tab-pane fade" id="autorisation">
                     <p>Section Autorisation (à implémenter).</p>
                 </div>
+<div class="tab-pane fade" id="pointage">
+    <!-- Formulaire pour le pointage -->
+<div class="card mb-4">
+    <div class="card-header">Pointage</div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="text-center">
+                <button type="submit" name="check_in" class="btn btn-success mb-2">Pointer l'entrée</button>
+                <button type="submit" name="check_out" class="btn btn-danger mb-2">Pointer la sortie</button>
+            </div>
+        </form>
+    </div>
+    <!-- Liste des pointages -->
+     <div class="card mb-4">
+        <div class="card-header">Importer les pointages via Excel</div>
+        <div class="card-body">
+            <form method="post" enctype="multipart/form-data">
+                {% csrf_token %}
+                <div class="mb-3">
+                    <label for="excel_file" class="form-label">Sélectionner un fichier Excel</label>
+                    <input type="file" class="form-control" id="excel_file" name="excel_file" accept=".xlsx, .xls" required>
+                </div>
+                <div class="text-end">
+                    <button type="submit" name="upload_pointage_excel" class="btn btn-primary">Importer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+<div class="card mb-4">
+        <div class="card-header">Mes pointages</div>
+        <div class="card-body">
+            <div class="text-end mb-3">
+                <a href="{% url 'export_pointages' %}" class="btn btn-primary">Exporter en Excel</a>
+            </div>
+            <table class="table table-bordered">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Heure d'entrée</th>
+                        <th>Heure de sortie</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pointage in pointages %}
+                    <tr>
+                        <td>{{ pointage.date }}</td>
+                        <td>{{ pointage.heure_entree|default:"Non pointé" }}</td>
+                        <td>{{ pointage.heure_sortie|default:"Non pointé" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="3">Aucun pointage enregistré</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<!-- Liste des pointages -->
+<div class="card mb-4">
+    <div class="card-header">Mes pointages</div>
+    <div class="card-body">
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Heure d'entrée</th>
+                    <th>Heure de sortie</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pointage in pointages %}
+                <tr>
+                    <td>{{ pointage.date }}</td>
+                    <td>{{ pointage.heure_entree|default:"Non pointé" }}</td>
+                    <td>{{ pointage.heure_sortie|default:"Non pointé" }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="3">Aucun pointage enregistré</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+</div>
+    <div class="tab-pane fade" id="absences">
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="card-title mb-0">Demande d'absence</h5>
+        </div>
+        <div class="card-body">
+            {% include 'absence_request.html' %}
+        </div>
+           <div class="card-body">
+            {% include 'absence_list.html' %}
+        </div>
+    </div>
+</div>
                 <div class="tab-pane fade" id="historique">
                     <!-- Carte pour l'historique de connexion -->
                     <div class="card">
@@ -168,6 +268,10 @@
         </div>
     </div>
 </div>
+
+<!-- Inclure Bootstrap 5 JS et Popper.js pour le modal -->
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/js/bootstrap.min.js"></script>
 {% endblock %}
 
 {% block extra_css %}
@@ -269,45 +373,132 @@
         padding-bottom: 0;
     }
 </style>
-{% endblock %}
-
-{% block extra_js %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        function filterTable() {
-            var input = document.getElementById("filterInput");
-            var filter = input.value.toLowerCase();
-            var table = document.querySelector(".card-body table");
-            var tr = table ? table.getElementsByTagName("tr") : [];
+        const userId = {{ request.user.id }}; // Get the user ID from the template context
+        const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
+        const wsUrl = `${wsScheme}://${window.location.host}/ws/notifications/${userId}/`;
+        const socket = new WebSocket(wsUrl);
 
-            if (!table) {
-                console.warn("Aucun tableau trouvé dans .card-body, filtrage ignoré.");
-                return;
-            }
+        socket.onopen = function(event) {
+            console.log("WebSocket connection established for user " + userId);
+        };
 
-            for (var i = 1; i < tr.length; i++) { // Commencer à 1 pour ignorer l'en-tête
-                var found = false;
-                var td = tr[i].getElementsByTagName("td");
-                for (var j = 0; j < td.length; j++) {
-                    var cell = td[j];
-                    if (cell) {
-                        if (cell.textContent.toLowerCase().indexOf(filter) > -1) {
-                            found = true;
-                            break;
-                        }
+        socket.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            console.log("Received notification:", data);
+
+            // Update the notification list
+            const notificationList = document.getElementById('notification-list');
+            const newNotification = document.createElement('li');
+            newNotification.innerHTML = `
+                <a class="dropdown-item unread" href="#" data-notification-id="${data.notification_id}" onclick="markAsRead(event, ${data.notification_id})">
+                    ${data.message} <br>
+                    <small>${new Date().toLocaleString()}</small>
+                </a>
+            `;
+            notificationList.prepend(newNotification); // Add new notification at the top
+
+            // Update the unread count
+            updateUnreadCount();
+        };
+
+        socket.onclose = function(event) {
+            console.log("WebSocket connection closed:", event);
+        };
+
+        socket.onerror = function(error) {
+            console.error("WebSocket error:", error);
+            alert("Failed to connect to WebSocket. Please check the server configuration.");
+        };
+
+        // Function to fetch and update the unread notification count
+        function updateUnreadCount() {
+            fetch("{% url 'get_unread_count' %}", {
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to fetch unread count');
+                }
+                return response.json();
+            })
+            .then(data => {
+                const countElement = document.getElementById('unread-count');
+                if (countElement) {
+                    countElement.innerText = data.unread_count;
+                } else {
+                    console.error("Element with ID 'unread-count' not found");
+                }
+            })
+            .catch(error => console.error("Error fetching unread count:", error));
+        }
+
+        // Mark notification as read when clicked
+        function markAsRead(event, notificationId) {
+            event.preventDefault(); // Prevent default link behavior
+            fetch(`/mark-notification-read/${notificationId}/`, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': getCsrfToken()
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Update the UI to mark the notification as read
+                    const notificationItem = document.querySelector(`[data-notification-id="${notificationId}"]`);
+                    if (notificationItem) {
+                        notificationItem.classList.remove('unread');
+                    }
+                    updateUnreadCount();
+                }
+            })
+            .catch(error => console.error("Error marking notification as read:", error));
+        }
+
+        // Helper function to get CSRF token from cookies
+        function getCsrfToken() {
+            const name = 'csrftoken';
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
                     }
                 }
-                tr[i].style.display = found ? "" : "none";
             }
+            return cookieValue;
         }
 
-        // Ajouter un écouteur d'événements pour le filtrage
-        var input = document.getElementById("filterInput");
-        if (input) {
-            input.addEventListener("keyup", filterTable);
-        } else {
-            console.error("Input #filterInput non trouvé");
-        }
+        // Initial load of unread count
+        updateUnreadCount();
     });
+
+    // Fonction pour filtrer la table (si nécessaire)
+    function filterTable() {
+        const input = document.getElementById('filterInput');
+        const filter = input.value.toLowerCase();
+        const table = document.querySelector('.table');
+        const rows = table.getElementsByTagName('tr');
+
+        for (let i = 1; i < rows.length; i++) {
+            const cells = rows[i].getElementsByTagName('td');
+            let match = false;
+            for (let j = 0; j < cells.length; j++) {
+                if (cells[j].innerText.toLowerCase().indexOf(filter) > -1) {
+                    match = true;
+                    break;
+                }
+            }
+            rows[i].style.display = match ? '' : 'none';
+        }
+    }
 </script>
 {% endblock %}
