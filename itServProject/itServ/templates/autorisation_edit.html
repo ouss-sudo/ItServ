@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="card-body">
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="card-title mb-0">Modifier la demande d'autorisation</h5>
+        </div>
+        <div class="card-body">
+            <form method="post" action="{% url 'edit_autorisation' autorisation.id %}">
+                {% csrf_token %}
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="start_datetime" class="form-label">Date de début</label>
+                        <input type="datetime-local" name="start_datetime" id="start_datetime" class="form-control" value="{{ autorisation.start_datetime|date:'Y-m-d\TH:i' }}" required>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="end_datetime" class="form-label">Date de fin</label>
+                        <input type="datetime-local" name="end_datetime" id="end_datetime" class="form-control" value="{{ autorisation.end_datetime|date:'Y-m-d\TH:i' }}" required>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label for="description" class="form-label">Description</label>
+                    <textarea name="description" id="description" class="form-control" rows="4" required>{{ autorisation.description }}</textarea>
+                </div>
+                <div class="text-end">
+                    <button type="submit" class="btn btn-primary">Enregistrer</button>
+                    <a href="{% url 'employee' %}" class="btn btn-secondary">Annuler</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

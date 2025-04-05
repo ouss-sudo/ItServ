@@ -34,5 +34,10 @@ urlpatterns = [
     path('export-pointages/', views.export_pointages_to_excel, name='export_pointages'),
     path('update_leave_status/<int:leave_id>/<str:status>/', views.update_leave_status, name='update_leave_status'),
     path('update_absence_status/<int:absence_id>/<str:status>/', views.update_absence_status, name='update_absence_status'),
-    # Autres URLs...
-]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    path('calendar/', views.calendar_view, name='calendar'),
+    path('autorisation/submit/', views.submit_autorisation, name='submit_autorisation'),
+    path('autorisation/edit/<int:id>/', views.edit_autorisation, name='edit_autorisation'),
+                  path('autorisation/delete/<int:id>/', views.delete_autorisation, name='delete_autorisation'),
+path('autorisation/accept/<int:id>/', views.accept_autorisation, name='accept_autorisation'),
+path('autorisation/reject/<int:id>/', views.reject_autorisation, name='reject_autorisation'),
+              ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

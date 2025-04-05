@@ -111,7 +111,30 @@
                             </form>
                         </div>
                     </div>
+  <!-- Bouton pour afficher/masquer la carte -->
+  <div class="text-end mt-3">
+    <button type="button" class="btn btn-primary" id="toggleAddType">Ajouter un type de congé</button>
+</div>
 
+<!-- Carte pour ajouter un type de congé (cachée par défaut) -->
+<div class="card mt-3" id="addTypeCard" style="display: none;">
+    <div class="card-header bg-primary text-white">
+        <h5 class="card-title mb-0">Ajouter un nouveau type de congé</h5>
+    </div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div class="mb-3">
+                <label for="new_type_conge" class="form-label">Nouveau type de congé</label>
+                <input type="text" class="form-control" id="new_type_conge" name="new_type_conge" required>
+            </div>
+            <div class="text-end">
+                <button type="submit" class="btn btn-success">Sauvegarder</button>
+                <button type="button" class="btn btn-secondary" id="cancelAddType">Annuler</button>
+            </div>
+        </form>
+    </div>
+</div>
                     <!-- Carte pour la liste des demandes de congé -->
                     <div class="card">
                         <div class="card-header bg-dark-teal text-red d-flex justify-content-between align-items-center">
@@ -224,7 +247,102 @@
                 </div>
 
                 <div class="tab-pane fade" id="autorisation">
-                    <p>Section Autorisation (à implémenter).</p>
+ <!-- Tableau des demandes d'autorisation -->
+    <div class="card">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">Liste des demandes d'autorisation</h5>
+            <div class="filter-input">
+                <input type="text" class="form-control" placeholder="Filtrer parmi ces éléments..." id="filterInput" onkeyup="filterTable()">
+            </div>
+        </div>
+        <div class="card-body">
+            <p>Nombre de demandes : {{ autorisations.paginator.count }}</p>
+            {% if autorisations %}
+                <div class="table-responsive">
+                    <table class="table custom-table" id="autorisationsTable">
+                        <thead class="bg-dark-teal text-white">
+                            <tr>
+                                <th>Employé</th>
+                                <th>Date de début</th>
+                                <th>Date de fin</th>
+                                <th>Durée</th>
+                                <th>Description</th>
+                                <th>Statut</th>
+                                <th>Date de création</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for autorisation in autorisations %}
+                                <tr>
+                                    <td>{{ autorisation.employee.username }}</td>
+                                    <td>{{ autorisation.start_datetime|date:"Y-m-d H:i" }}</td>
+                                    <td>{{ autorisation.end_datetime|date:"Y-m-d H:i" }}</td>
+                                    <td>{{ autorisation.duration }}</td>
+                                    <td>{{ autorisation.description }}</td>
+                                    <td>
+                                        <span class="badge {% if autorisation.status == 'en cours' %}bg-warning text-dark{% elif autorisation.status == 'Approved' %}bg-success text-white{% elif autorisation.status == 'Rejected' %}bg-danger text-white{% endif %}">
+                                            {{ autorisation.status|capfirst }}
+                                        </span>
+                                    </td>
+                                    <td>{{ autorisation.created_at|date:"Y-m-d H:i" }}</td>
+                                    <td>
+                                        <a href="{% url 'accept_autorisation' autorisation.id %}"
+                                           class="btn btn-sm btn-success me-1 {% if autorisation.status == 'Approved' %}disabled{% endif %}"
+                                           {% if autorisation.status == 'Approved' %}aria-disabled="true"{% endif %}
+                                           onclick="return confirm('Voulez-vous accepter cette demande ?');">
+                                            Accepter
+                                        </a>
+                                        <a href="{% url 'reject_autorisation' autorisation.id %}"
+                                           class="btn btn-sm btn-danger {% if autorisation.status == 'Rejected' %}disabled{% endif %}"
+                                           {% if autorisation.status == 'Rejected' %}aria-disabled="true"{% endif %}
+                                           onclick="return confirm('Voulez-vous refuser cette demande ?');">
+                                            Refuser
+                                        </a>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <nav aria-label="Page navigation">
+                    <ul class="pagination justify-content-end mt-3">
+                        {% if autorisations.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?autorisation_page={{ autorisations.previous_page_number }}{% if status %}&status={{ status }}{% endif %}{% if start_date_from %}&start_date_from={{ start_date_from }}{% endif %}{% if start_date_to %}&start_date_to={{ start_date_to }}{% endif %}" aria-label="Previous">
+                                    <span aria-hidden="true">«</span>
+                                </a>
+                            </li>
+                        {% else %}
+                            <li class="page-item disabled"><span class="page-link">«</span></li>
+                        {% endif %}
+                        {% for num in autorisations.paginator.page_range %}
+                            <li class="page-item {% if autorisations.number == num %}active{% endif %}">
+                                <a class="page-link" href="?autorisation_page={{ num }}{% if status %}&status={{ status }}{% endif %}{% if start_date_from %}&start_date_from={{ start_date_from }}{% endif %}{% if start_date_to %}&start_date_to={{ start_date_to }}{% endif %}">
+                                    {{ num }}
+                                </a>
+                            </li>
+                        {% endfor %}
+                        {% if autorisations.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?autorisation_page={{ autorisations.next_page_number }}{% if status %}&status={{ status }}{% endif %}{% if start_date_from %}&start_date_from={{ start_date_from }}{% endif %}{% if start_date_to %}&start_date_to={{ start_date_to }}{% endif %}" aria-label="Next">
+                                    <span aria-hidden="true">»</span>
+                                </a>
+                            </li>
+                        {% else %}
+                            <li class="page-item disabled"><span class="page-link">»</span></li>
+                        {% endif %}
+                    </ul>
+                    <p class="text-muted text-end mt-2">{{ autorisations.start_index }}-{{ autorisations.end_index }} de {{ autorisations.paginator.count }}</p>
+                </nav>
+            {% else %}
+                <p class="text-center">Aucune demande d'autorisation trouvée.</p>
+            {% endif %}
+        </div>
+    </div>
+                     <div class="card-body">
+                            {% include 'ITservBack/ai_leave_planning.html' %}
+                        </div>
                 </div>
                  <div class="tab-pane fade" id="pointage">
     <!-- Formulaire pour le pointage -->
@@ -764,6 +882,76 @@
         if (inputLeaves) {
             inputLeaves.addEventListener("keyup", function() {
                 filterTable('filterInputLeaves', 'leavesTable');
+            });
+        }
+    });
+        document.addEventListener('DOMContentLoaded', function() {
+        // Gestion du bouton pour afficher/masquer la carte
+        const toggleButton = document.getElementById('toggleAddType');
+        const addTypeCard = document.getElementById('addTypeCard');
+        const cancelButton = document.getElementById('cancelAddType');
+
+        if (!toggleButton || !addTypeCard || !cancelButton) {
+            console.error('Un ou plusieurs éléments du DOM sont introuvables : ', {
+                toggleButton: !!toggleButton,
+                addTypeCard: !!addTypeCard,
+                cancelButton: !!cancelButton
+            });
+            return;
+        }
+
+        toggleButton.addEventListener('click', function() {
+            if (addTypeCard.style.display === 'none') {
+                addTypeCard.style.display = 'block';
+                toggleButton.textContent = 'Masquer l’ajout';
+            } else {
+                addTypeCard.style.display = 'none';
+                toggleButton.textContent = 'Ajouter un type de congé';
+            }
+        });
+
+        cancelButton.addEventListener('click', function() {
+            addTypeCard.style.display = 'none';
+            toggleButton.textContent = 'Ajouter un type de congé';
+        });
+
+        // Filtrage des tableaux
+        function filterTable(inputId, tableId) {
+            const input = document.getElementById(inputId);
+            const filter = input.value.toLowerCase();
+            const table = document.getElementById(tableId);
+            const tr = table ? table.getElementsByTagName("tr") : [];
+
+            if (!table) {
+                console.warn("Aucun tableau trouvé pour ID: " + tableId + ", filtrage ignoré.");
+                return;
+            }
+
+            for (let i = 1; i < tr.length; i++) {
+                let found = false;
+                const td = tr[i].getElementsByTagName("td");
+                for (let j = 0; j < td.length; j++) {
+                    const cell = td[j];
+                    if (cell && cell.textContent.toLowerCase().indexOf(filter) > -1) {
+                        found = true;
+                        break;
+                    }
+                }
+                tr[i].style.display = found ? "" : "none";
+            }
+        }
+
+        const inputLeaves = document.getElementById("filterInputLeaves");
+        if (inputLeaves) {
+            inputLeaves.addEventListener("keyup", function() {
+                filterTable('filterInputLeaves', 'leavesTable');
+            });
+        }
+
+        const inputAbsences = document.getElementById("filterInputAbsences");
+        if (inputAbsences) {
+            inputAbsences.addEventListener("keyup", function() {
+                filterTable('filterInputAbsences', 'absencesTable');
             });
         }
     });

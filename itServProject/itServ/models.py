@@ -113,3 +113,15 @@ class Pointage(models.Model):
     class Meta:
         verbose_name = "Pointage"
         verbose_name_plural = "Pointages"
+
+class Autorisation(models.Model):
+    employee = models.ForeignKey(User, on_delete=models.CASCADE)
+    start_datetime = models.DateTimeField()
+    end_datetime = models.DateTimeField()
+    description = models.TextField()
+    duration = models.CharField(max_length=50)
+    status = models.CharField(max_length=20, default='en cours')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Autorisation de {self.employee.username} du {self.start_datetime}"

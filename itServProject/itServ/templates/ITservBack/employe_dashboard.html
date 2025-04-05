@@ -54,6 +54,9 @@
                 <li class="nav-item">
                     <a class="nav-link" href="#historique" data-bs-toggle="tab">Historique de connexion</a>
                 </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="#Planification des congés" data-bs-toggle="tab">Planification des congés</a>
+                </li>
             </ul>
 
             <div class="tab-content">
@@ -128,7 +131,15 @@
                 </div>
 
                 <div class="tab-pane fade" id="autorisation">
-                    <p>Section Autorisation (à implémenter).</p>
+                  <!--  {% include 'ITservBack/calendar.html' %} -->
+                                {% include 'autorisation_request.html' %}
+
+                     <div class="card-body">
+                            {% include 'ITservBack/ai_leave_planning.html' %}
+                         {% include 'ITservBack/employee_leave_calendar.html' %}
+
+
+                        </div>
                 </div>
 <div class="tab-pane fade" id="pointage">
     <!-- Formulaire pour le pointage -->
@@ -192,7 +203,7 @@
 </div>
 <!-- Liste des pointages -->
 <div class="card mb-4">
-    <div class="card-header">Mes pointages</div>
+    <div class="card-header">pointage</div>
     <div class="card-body">
         <table class="table table-bordered">
             <thead>
@@ -219,11 +230,13 @@
     </div>
 </div>
 </div>
+
     <div class="tab-pane fade" id="absences">
     <div class="card mb-4">
         <div class="card-header bg-primary text-white">
             <h5 class="card-title mb-0">Demande d'absence</h5>
         </div>
+     
         <div class="card-body">
             {% include 'absence_request.html' %}
         </div>

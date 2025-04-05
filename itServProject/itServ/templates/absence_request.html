@@ -1,6 +1,8 @@
 {% load static %}
 
 {% block content %}
+<a href="{% url 'calendar' %}" class="btn btn-primary">Voir mon calendrier</a>
+
 <div class="card-body">
     {% if messages %}
         {% for message in messages %}
@@ -44,9 +46,8 @@
             <button type="submit" class="btn btn-danger">Enregistrer</button>
         </div>
     </form>
-
     <!-- Bouton pour afficher/masquer la carte -->
-    {% if user.profil.poste == 'ResponsableRH' or user.is_superuser %}
+    {% if user.profil.poste == 'EMPLOYE' or user.is_superuser %}
     <div class="text-end mt-3">
         <button type="button" class="btn btn-primary" id="toggleAddTypeAbsence">Ajouter un type d'absence</button>
     </div>

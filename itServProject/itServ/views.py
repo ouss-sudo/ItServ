@@ -1,12 +1,33 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect,get_object_or_404
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
+from .models import Autorisation
+
 from django.contrib import messages
 from django.views import View
 from django.utils.decorators import method_decorator
 from django.http import HttpResponse
 import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score
+import joblib
+from datetime import datetime, timedelta
+from calendar import monthrange
+from django.utils import timezone
+from calendar import monthrange
+
+from celery import shared_task
+from django.utils import timezone
+from itServ.models import Notification, Profil
+
+from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
+from django.utils import timezone
+from itServ.models import Profil, Conge, Absence
+from django.utils import timezone
+import logging
 from io import BytesIO
 from django.views.decorators.csrf import csrf_protect
 from .models import Profil, UserLoginHistory,TypeAbsence,Absence # Ajout de UserLoginHistory
@@ -30,9 +51,12 @@ from .models import Conge,TypeConge,Absence,TypeAbsence,Pointage
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 # itServ/views.py
-from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
-
+from channels.db import database_sync_to_async
+from ortools.sat.python import cp_model
+import pandas as pd
+from sklearn.ensemble import RandomForestClassifier
+import joblib
 
 
 
@@ -45,12 +69,120 @@ def home(request):
 
 @login_required
 def employee(request):
+
     try:
         profil = Profil.objects.get(user=request.user)
         poste = profil.poste
     except Profil.DoesNotExist:
         poste = 'EMPLOYE'
         logger.warning(f"Profil non trouvé pour l'utilisateur {request.user.username}, poste par défaut : EMPLOYE")
+        # Get year and month, handling empty strings
+        year_str = request.GET.get('year', str(timezone.now().year))
+        month_str = request.GET.get('month', str(timezone.now().month))
+
+        # Convert to integers, defaulting to current year/month if invalid or empty
+        try:
+            year = int(year_str) if year_str.strip() else timezone.now().year
+        except ValueError:
+            year = timezone.now().year
+            logger.warning(f"Invalid year value: {year_str}, defaulting to {year}")
+
+        try:
+            month = int(month_str) if month_str.strip() else timezone.now().month
+        except ValueError:
+            month = timezone.now().month
+            logger.warning(f"Invalid month value: {month_str}, defaulting to {month}")
+
+        # Normaliser le mois et l'année
+        if month < 1:
+            month = 12
+            year -= 1
+        elif month > 12:
+            month = 1
+            year += 1
+
+        # Logique du calendrier
+        first_day = datetime(year, month, 1)
+        num_days = monthrange(year, month)[1]
+        last_day = first_day + timedelta(days=num_days - 1)
+        first_weekday = first_day.weekday()
+
+        pointages = Pointage.objects.filter(
+            employe=request.user,
+            date__range=[first_day, last_day]
+        ).values('date', 'heure_entree')
+
+        conges = Conge.objects.filter(
+            employee=request.user,
+            start_date__lte=last_day,
+            end_date__gte=first_day
+        ).values('start_date', 'end_date')
+
+        absences = Absence.objects.filter(
+            employee=request.user,
+            start_date__lte=last_day,
+            end_date__gte=first_day
+        ).values('start_date', 'end_date')
+
+        days = []
+        for day in range(1, num_days + 1):
+            current_date = datetime(year, month, day).date()
+            days.append({
+                'day': day,
+                'date': current_date,
+                'worked': False,
+                'absent': False
+            })
+
+        for pointage in pointages:
+            for entry in days:
+                if entry['date'] == pointage['date'] and pointage['heure_entree']:
+                    entry['worked'] = True
+
+        for conge in conges:
+            start = max(conge['start_date'], first_day.date())
+            end = min(conge['end_date'], last_day.date())
+            while start <= end:
+                for entry in days:
+                    if entry['date'] == start:
+                        entry['absent'] = True
+                        entry['worked'] = False
+                start += timedelta(days=1)
+
+        for absence in absences:
+            start = max(absence['start_date'], first_day.date())
+            end = min(absence['end_date'], last_day.date())
+            while start <= end:
+                for entry in days:
+                    if entry['date'] == start:
+                        entry['absent'] = True
+                        entry['worked'] = False
+                start += timedelta(days=1)
+
+        calendar_grid = []
+        current_day = 1
+        for week in range(6):
+            week_row = []
+            for day in range(7):
+                if (week == 0 and day < first_weekday) or current_day > num_days:
+                    week_row.append(None)
+                else:
+                    for entry in days:
+                        if entry['day'] == current_day:
+                            week_row.append(entry)
+                            current_day += 1
+                            break
+            calendar_grid.append(week_row)
+        # Gestion du filtre
+    start_date_from = request.GET.get('start_date_from')
+    start_date_to = request.GET.get('start_date_to')
+
+    autorisations = Autorisation.objects.filter(employee=request.user)
+
+    if start_date_from:
+        autorisations = autorisations.filter(start_datetime__date__gte=start_date_from)
+    if start_date_to:
+        autorisations = autorisations.filter(start_datetime__date__lte=start_date_to)
 
     # Gestion des congés, absences et pointages
     if request.user.is_superuser:
@@ -253,7 +385,7 @@ def employee(request):
         return redirect('employee')
     # Logique pour ajouter un nouveau type d'absence
     if request.method == 'POST' and 'new_type_absence' in request.POST:
-        if request.user.profil.poste == 'ResponsableRH' or request.user.is_superuser:
+        if request.user.profil.poste == 'EMPLOYE' or request.user.is_superuser:
             new_type = request.POST.get('new_type_absence')
             if new_type:
                 try:
@@ -297,6 +429,11 @@ def employee(request):
         'notifications': notifications,
         'type_conge_choices': TypeConge.objects.filter(flag_active=True).values_list('id', 'type'),
         'type_absence_choices': TypeAbsence.objects.filter(flag_active=True).values_list('id', 'type'),
+        'autorisations': autorisations,
+        'start_date_from': start_date_from,
+        'start_date_to': start_date_to,
+        # Données du calendrier
+
     }
     return render(request, "ITservBack/employe_dashboard.html", context)
 def logout_view(request):  # Nouvelle vue pour la déconnexion
@@ -827,7 +964,28 @@ def responsable_rh_dashboard(request):
 
     # Récupérer les pointages (tous les employés pour le Responsable RH)
     pointages = Pointage.objects.all().order_by('-date')
+    # Récupérer et filtrer les demandes d'autorisation
+    autorisations = Autorisation.objects.all().order_by('-created_at')
+    status = request.GET.get('status', '')
+    start_date_from = request.GET.get('start_date_from', '')
+    start_date_to = request.GET.get('start_date_to', '')
 
+    if status:
+        autorisations = autorisations.filter(status=status)
+    if start_date_from:
+        autorisations = autorisations.filter(start_datetime__date__gte=start_date_from)
+    if start_date_to:
+        autorisations = autorisations.filter(start_datetime__date__lte=start_date_to)
+
+    # Pagination pour les autorisations
+    autorisation_paginator = Paginator(autorisations, 10)
+    autorisation_page = request.GET.get('autorisation_page', 1)
+    try:
+        autorisations = autorisation_paginator.page(autorisation_page)
+    except PageNotAnInteger:
+        autorisations = autorisation_paginator.page(1)
+    except EmptyPage:
+        autorisations = autorisation_paginator.page(autorisation_paginator.num_pages)
     # Récupérer et filtrer les demandes de congé
     leave_requests = Conge.objects.all().order_by('-created_at')
     type_conge = request.GET.get('type_conge', '')
@@ -922,6 +1080,8 @@ def responsable_rh_dashboard(request):
         'login_histories': login_histories,
         'user_filter': user_filter,
         'unread_notifications_count': unread_notifications_count,
+    'autorisations': autorisations,  # Ajout de la clé manquante
+
     }
     return render(request, "ITservBack/dashboard_ResponsableRH.html", context)
 
@@ -1040,5 +1200,399 @@ def update_absence_status(request, absence_id, status):
             messages.error(request, "Statut invalide.")
     except Absence.DoesNotExist:
         messages.error(request, "Demande d'absence introuvable.")
+    return redirect('responsable_rh_dashboard')
+def load_leave_and_absence_data():
+    # Charger les données des congés
+    conges = Conge.objects.all().values(
+        'employee__username',
+        'type_conge__type',
+        'start_date',
+        'end_date',
+        'status',
+        'created_at'
+    )
+    conges_df = pd.DataFrame(list(conges))
+
+    # Charger les données des absences
+    absences = Absence.objects.all().values(
+        'employee__username',
+        'type_absence__type',
+        'start_date',
+        'end_date',
+        'status',
+        'created_at'
+    )
+    absences_df = pd.DataFrame(list(absences))
+
+    # Combiner les données
+    if not conges_df.empty and not absences_df.empty:
+        data = pd.concat([conges_df, absences_df], ignore_index=True)
+    elif not conges_df.empty:
+        data = conges_df
+    elif not absences_df.empty:
+        data = absences_df
+    else:
+        return pd.DataFrame()  # Retourner un DataFrame vide si aucune donnée
+
+    # Renommer les colonnes pour uniformiser
+    data = data.rename(columns={
+        'employee__username': 'employee',
+        'type_conge__type': 'type_conge',
+        'type_absence__type': 'type_absence'
+    })
+
+    # Remplir les colonnes manquantes
+    if 'type_conge' not in data:
+        data['type_conge'] = None
+    if 'type_absence' not in data:
+        data['type_absence'] = None
+
+    return data
+def train_leave_prediction_model():
+    # Charger les données directement depuis la base
+    data = load_leave_and_absence_data()
+
+    if data.empty:
+        logger.warning("Aucune donnée de congé ou d'absence disponible pour l'entraînement.")
+        return False
+
+    # Préparer les features
+    data['start_date'] = pd.to_datetime(data['start_date'])
+    data['month'] = data['start_date'].dt.month
+    data['day_of_week'] = data['start_date'].dt.dayofweek
+    data['is_weekend'] = data['day_of_week'].isin([5, 6]).astype(int)
+
+    # Feature : type de congé/absence
+    data['type'] = data['type_conge'].fillna(data['type_absence'])
+
+    # Feature : employé (encodage)
+    data['employee_code'] = data['employee'].astype('category').cat.codes
+
+    # Target : 1 si absence/congé, 0 sinon
+    data['is_absent'] = 1  # Puisque les données sont des congés/absences
+
+    # Sélectionner les features et la cible
+    features = ['employee_code', 'month', 'day_of_week', 'is_weekend']
+    X = data[features]
+    y = data['is_absent']
+
+    # Diviser les données en entraînement et test
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+    # Entraîner un modèle RandomForest
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model.fit(X_train, y_train)
+
+    # Évaluer le modèle
+    y_pred = model.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+    logger.info(f"Précision du modèle : {accuracy}")
+
+    # Sauvegarder le modèle
+    joblib.dump(model, 'absence_prediction_model.pkl')
+    logger.info("Modèle entraîné et sauvegardé avec succès.")
+    return True
+
+@shared_task
+def check_leave_predictions():
+    # Charger le modèle
+    try:
+        model = joblib.load('absence_prediction_model.pkl')
+    except FileNotFoundError:
+        logger.error("Modèle non trouvé. Tâche annulée.")
+        return
+
+    # Charger les données historiques pour encoder les employés
+    data = load_leave_and_absence_data()
+    if data.empty:
+        logger.warning("Aucune donnée historique disponible pour les prédictions.")
+        return
+
+    # Créer un mapping pour encoder les employés
+    employee_mapping = data[['employee']].drop_duplicates()
+    employee_mapping['employee_code'] = employee_mapping['employee'].astype('category').cat.codes
+    employee_mapping = dict(zip(employee_mapping['employee'], employee_mapping['employee_code']))
+
+    # Générer des données pour les 7 prochains jours
+    future_dates = pd.date_range(start=timezone.now().date(), periods=7, freq='D')
+    predictions = []
+
+    # Récupérer les congés et absences existants
+    existing_leaves = Conge.objects.filter(start_date__gte=timezone.now().date()).values(
+        'employee__username', 'start_date', 'end_date'
+    )
+    existing_absences = Absence.objects.filter(start_date__gte=timezone.now().date()).values(
+        'employee__username', 'start_date', 'end_date'
+    )
+    planned_leaves = []
+    for leave in existing_leaves:
+        planned_leaves.append({
+            'employee': leave['employee__username'],
+            'start_date': leave['start_date'],
+            'end_date': leave['end_date']
+        })
+    for absence in existing_absences:
+        planned_leaves.append({
+            'employee': absence['employee__username'],
+            'start_date': absence['start_date'],
+            'end_date': absence['end_date']
+        })
+
+    # Récupérer les employés
+    employees = Profil.objects.all()
+    for employee in employees:
+        employee_username = employee.user.username
+        employee_code = employee_mapping.get(employee_username, -1)
+        if employee_code == -1:
+            continue
+
+        for date in future_dates:
+            # Vérifier si l'employé a déjà un congé ou une absence planifiée
+            is_already_planned = False
+            for leave in planned_leaves:
+                if (leave['employee'] == employee_username and
+                        leave['start_date'] <= date.date() <= leave['end_date']):
+                    is_already_planned = True
+                    break
+            if is_already_planned:
+                continue
+
+            # Préparer les données pour la prédiction
+            data = {
+                'employee_code': employee_code,
+                'month': date.month,
+                'day_of_week': date.dayofweek,
+                'is_weekend': 1 if date.dayofweek in [5, 6] else 0,
+            }
+            df = pd.DataFrame([data])
+
+            # Prédire
+            prediction = model.predict(df[['employee_code', 'month', 'day_of_week', 'is_weekend']])[0]
+            if prediction == 1:
+                probability = model.predict_proba(df[['employee_code', 'month', 'day_of_week', 'is_weekend']])[0][1]
+                if probability > 0.7:  # Seuil de probabilité
+                    predictions.append({
+                        'employee': employee_username,
+                        'date': date,
+                        'probability': probability
+                    })
+
+    # Envoyer des notifications aux responsables RH
+    if predictions:
+        responsables_rh = Profil.objects.filter(poste='ResponsableRH')
+        for profil in responsables_rh:
+            for pred in predictions:
+                message = f"Attention : {pred['employee']} risque d'être absent le {pred['date'].strftime('%Y-%m-%d')} (probabilité : {pred['probability']:.2f}). Planifiez en conséquence."
+                Notification.objects.create(
+                    user=profil.user,
+                    message=message
+                )
+        logger.info(f"Notifications envoyées pour {len(predictions)} prédictions.")
+    else:
+        logger.info("Aucune prédiction d'absence à signaler.")
+
+@login_required
+def calendar_view(request):
+    year = int(request.GET.get('year', timezone.now().year))
+    month = int(request.GET.get('month', timezone.now().month))
+
+    # Normaliser le mois et l'année
+    if month < 1:
+        month = 12
+        year -= 1
+    elif month > 12:
+        month = 1
+        year += 1
+
+    first_day = datetime(year, month, 1)
+    num_days = monthrange(year, month)[1]
+    last_day = first_day + timedelta(days=num_days - 1)
+    first_weekday = first_day.weekday()  # 0 = Lundi, 6 = Dimanche
+
+    # Récupérer les pointages, congés et absences
+    pointages = Pointage.objects.filter(
+        employe=request.user,
+        date__range=[first_day, last_day]
+    ).values('date', 'heure_entree')
+
+    conges = Conge.objects.filter(
+        employee=request.user,
+        start_date__lte=last_day,
+        end_date__gte=first_day
+    ).values('start_date', 'end_date')
+
+    absences = Absence.objects.filter(
+        employee=request.user,
+        start_date__lte=last_day,
+        end_date__gte=first_day
+    ).values('start_date', 'end_date')
+
+    # Créer une liste de jours avec leur statut
+    days = []
+    for day in range(1, num_days + 1):
+        current_date = datetime(year, month, day).date()
+        days.append({
+            'day': day,
+            'date': current_date,
+            'worked': False,
+            'absent': False
+        })
+
+    for pointage in pointages:
+        for entry in days:
+            if entry['date'] == pointage['date'] and pointage['heure_entree']:
+                entry['worked'] = True
+
+    for conge in conges:
+        start = max(conge['start_date'], first_day.date())
+        end = min(conge['end_date'], last_day.date())
+        while start <= end:
+            for entry in days:
+                if entry['date'] == start:
+                    entry['absent'] = True
+                    entry['worked'] = False
+            start += timedelta(days=1)
+
+    for absence in absences:
+        start = max(absence['start_date'], first_day.date())
+        end = min(absence['end_date'], last_day.date())
+        while start <= end:
+            for entry in days:
+                if entry['date'] == start:
+                    entry['absent'] = True
+                    entry['worked'] = False
+            start += timedelta(days=1)
+
+    # Créer une grille pour le calendrier (6 semaines x 7 jours)
+    calendar_grid = []
+    current_day = 1
+    for week in range(6):
+        week_row = []
+        for day in range(7):
+            if (week == 0 and day < first_weekday) or current_day > num_days:
+                week_row.append(None)
+            else:
+                for entry in days:
+                    if entry['day'] == current_day:
+                        week_row.append(entry)
+                        current_day += 1
+                        break
+        calendar_grid.append(week_row)
+
+    context = {
+        'year': year,
+        'month': month,
+        'calendar_grid': calendar_grid,
+        'month_name': first_day.strftime('%B'),
+        'weekdays': ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
+    }
+    return render(request, 'ITservBack/calendar.html', context)
+@login_required
+def submit_autorisation(request):
+    if request.method == 'POST':
+        start_datetime = request.POST.get('start_datetime')
+        end_datetime = request.POST.get('end_datetime')
+        description = request.POST.get('description')
+
+        try:
+            start_datetime = datetime.strptime(start_datetime, '%Y-%m-%dT%H:%M')
+            end_datetime = datetime.strptime(end_datetime, '%Y-%m-%dT%H:%M')
+        except ValueError:
+            messages.error(request, "Format de date/heure invalide.")
+            return redirect('employee')
+
+        if end_datetime <= start_datetime:
+            messages.error(request, "La date de fin doit être postérieure à la date de début.")
+            return redirect('employee')
+
+        duration = end_datetime - start_datetime
+        duration_hours = duration.total_seconds() / 3600
+
+        Autorisation.objects.create(
+            employee=request.user,
+            start_datetime=start_datetime,
+            end_datetime=end_datetime,
+            description=description,
+            duration=f"{duration_hours:.2f} heure(s)",
+            status='en cours',
+            created_at=timezone.now()
+        )
+        messages.success(request, "Demande d'autorisation enregistrée avec succès.")
+        return redirect('employee')
+
+    return redirect('employee')
+
+@login_required
+def edit_autorisation(request, id):
+    autorisation = get_object_or_404(Autorisation, id=id, employee=request.user)
+    if request.method == 'POST':
+        start_datetime = request.POST.get('start_datetime')
+        end_datetime = request.POST.get('end_datetime')
+        description = request.POST.get('description')
+
+        try:
+            start_datetime = datetime.strptime(start_datetime, '%Y-%m-%dT%H:%M')
+            end_datetime = datetime.strptime(end_datetime, '%Y-%m-%dT%H:%M')
+        except ValueError:
+            messages.error(request, "Format de date/heure invalide.")
+            return redirect('employee')
+
+        if end_datetime <= start_datetime:
+            messages.error(request, "La date de fin doit être postérieure à la date de début.")
+            return redirect('employee')
+
+        duration = end_datetime - start_datetime
+        duration_hours = duration.total_seconds() / 3600
+
+        autorisation.start_datetime = start_datetime
+        autorisation.end_datetime = end_datetime
+        autorisation.description = description
+        autorisation.duration = f"{duration_hours:.2f} heure(s)"
+        autorisation.save()
+        messages.success(request, "Demande d'autorisation modifiée avec succès.")
+        return redirect('employee')
+
+    # Pour une requête GET, nous n'affichons pas une page séparée
+    # Les données sont gérées directement dans le template via JavaScript
+    return redirect('employee')
+
+@login_required
+def delete_autorisation(request, id):
+    autorisation = get_object_or_404(Autorisation, id=id, employee=request.user)
+    autorisation.delete()
+    messages.success(request, "Demande d'autorisation supprimée avec succès.")
+    return redirect('employee')
+@login_required
+def accept_autorisation(request, id):
+    try:
+        profil = Profil.objects.get(user=request.user)
+        if profil.poste != 'ResponsableRH':
+            messages.error(request, "Vous n'avez pas les autorisations nécessaires pour effectuer cette action.")
+            return redirect('employee')
+    except Profil.DoesNotExist:
+        messages.error(request, "Profil non trouvé.")
+        return redirect('employee')
+
+    autorisation = get_object_or_404(Autorisation, id=id)
+    autorisation.status = 'Approved'
+    autorisation.save()
+    messages.success(request, f"La demande d'autorisation de {autorisation.employee.username} a été acceptée.")
+    return redirect('responsable_rh_dashboard')
+
+@login_required
+def reject_autorisation(request, id):
+    try:
+        profil = Profil.objects.get(user=request.user)
+        if profil.poste != 'ResponsableRH':
+            messages.error(request, "Vous n'avez pas les autorisations nécessaires pour effectuer cette action.")
+            return redirect('employee')
+    except Profil.DoesNotExist:
+        messages.error(request, "Profil non trouvé.")
+        return redirect('employee')
+
+    autorisation = get_object_or_404(Autorisation, id=id)
+    autorisation.status = 'Rejected'
+    autorisation.save()
+    messages.success(request, f"La demande d'autorisation de {autorisation.employee.username} a été refusée.")
     return redirect('responsable_rh_dashboard')
 

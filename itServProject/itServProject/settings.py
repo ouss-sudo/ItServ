@@ -26,7 +26,9 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
-# Application definition
+# itServProject/settings.py
+CELERY_BROKER_URL = 'redis://localhost:6379/0'
+CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'# Application definition
 
 INSTALLED_APPS = [
     'django.contrib.admin',
