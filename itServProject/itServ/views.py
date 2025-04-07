@@ -3,6 +3,8 @@ from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from .models import Autorisation
+from sklearn.cluster import KMeans
+from celery.exceptions import OperationalError
 
 from django.contrib import messages
 from django.views import View
@@ -43,6 +45,9 @@ from django.views.decorators.http import require_POST
 from .models import Notification  #
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.contrib import messages
+
+from .tasks import generate_leave_planning  # Importer depuis tasks.py
+
 import string
 import logging
 from django.contrib.auth.decorators import login_required
@@ -1293,103 +1298,7 @@ def train_leave_prediction_model():
     logger.info("Modèle entraîné et sauvegardé avec succès.")
     return True
 
-@shared_task
-def check_leave_predictions():
-    # Charger le modèle
-    try:
-        model = joblib.load('absence_prediction_model.pkl')
-    except FileNotFoundError:
-        logger.error("Modèle non trouvé. Tâche annulée.")
-        return
 
-    # Charger les données historiques pour encoder les employés
-    data = load_leave_and_absence_data()
-    if data.empty:
-        logger.warning("Aucune donnée historique disponible pour les prédictions.")
-        return
-
-    # Créer un mapping pour encoder les employés
-    employee_mapping = data[['employee']].drop_duplicates()
-    employee_mapping['employee_code'] = employee_mapping['employee'].astype('category').cat.codes
-    employee_mapping = dict(zip(employee_mapping['employee'], employee_mapping['employee_code']))
-
-    # Générer des données pour les 7 prochains jours
-    future_dates = pd.date_range(start=timezone.now().date(), periods=7, freq='D')
-    predictions = []
-
-    # Récupérer les congés et absences existants
-    existing_leaves = Conge.objects.filter(start_date__gte=timezone.now().date()).values(
-        'employee__username', 'start_date', 'end_date'
-    )
-    existing_absences = Absence.objects.filter(start_date__gte=timezone.now().date()).values(
-        'employee__username', 'start_date', 'end_date'
-    )
-    planned_leaves = []
-    for leave in existing_leaves:
-        planned_leaves.append({
-            'employee': leave['employee__username'],
-            'start_date': leave['start_date'],
-            'end_date': leave['end_date']
-        })
-    for absence in existing_absences:
-        planned_leaves.append({
-            'employee': absence['employee__username'],
-            'start_date': absence['start_date'],
-            'end_date': absence['end_date']
-        })
-
-    # Récupérer les employés
-    employees = Profil.objects.all()
-    for employee in employees:
-        employee_username = employee.user.username
-        employee_code = employee_mapping.get(employee_username, -1)
-        if employee_code == -1:
-            continue
-
-        for date in future_dates:
-            # Vérifier si l'employé a déjà un congé ou une absence planifiée
-            is_already_planned = False
-            for leave in planned_leaves:
-                if (leave['employee'] == employee_username and
-                        leave['start_date'] <= date.date() <= leave['end_date']):
-                    is_already_planned = True
-                    break
-            if is_already_planned:
-                continue
-
-            # Préparer les données pour la prédiction
-            data = {
-                'employee_code': employee_code,
-                'month': date.month,
-                'day_of_week': date.dayofweek,
-                'is_weekend': 1 if date.dayofweek in [5, 6] else 0,
-            }
-            df = pd.DataFrame([data])
-
-            # Prédire
-            prediction = model.predict(df[['employee_code', 'month', 'day_of_week', 'is_weekend']])[0]
-            if prediction == 1:
-                probability = model.predict_proba(df[['employee_code', 'month', 'day_of_week', 'is_weekend']])[0][1]
-                if probability > 0.7:  # Seuil de probabilité
-                    predictions.append({
-                        'employee': employee_username,
-                        'date': date,
-                        'probability': probability
-                    })
-
-    # Envoyer des notifications aux responsables RH
-    if predictions:
-        responsables_rh = Profil.objects.filter(poste='ResponsableRH')
-        for profil in responsables_rh:
-            for pred in predictions:
-                message = f"Attention : {pred['employee']} risque d'être absent le {pred['date'].strftime('%Y-%m-%d')} (probabilité : {pred['probability']:.2f}). Planifiez en conséquence."
-                Notification.objects.create(
-                    user=profil.user,
-                    message=message
-                )
-        logger.info(f"Notifications envoyées pour {len(predictions)} prédictions.")
-    else:
-        logger.info("Aucune prédiction d'absence à signaler.")
 
 @login_required
 def calendar_view(request):
@@ -1583,7 +1492,7 @@ def accept_autorisation(request, id):
 def reject_autorisation(request, id):
     try:
         profil = Profil.objects.get(user=request.user)
-        if profil.poste != 'ResponsableRH':
+        if profil.poste != 'EMPLOYE':
             messages.error(request, "Vous n'avez pas les autorisations nécessaires pour effectuer cette action.")
             return redirect('employee')
     except Profil.DoesNotExist:
@@ -1596,3 +1505,373 @@ def reject_autorisation(request, id):
     messages.success(request, f"La demande d'autorisation de {autorisation.employee.username} a été refusée.")
     return redirect('responsable_rh_dashboard')
 
+def analyze_leave_trends(combined_df):
+    if combined_df.empty:
+        logger.warning("Aucun congé ou autorisation trouvé pour l'analyse.")
+        return {'monthly_trends': {}, 'employee_clusters': {}}
+
+    logger.info(f"Colonnes de combined_df : {combined_df.columns.tolist()}")
+    logger.info(f"Aperçu de combined_df : \n{combined_df.to_string()}")
+
+    # Nettoyer et convertir les dates
+    try:
+        combined_df['start'] = pd.to_datetime(combined_df['start'], errors='coerce')
+        combined_df['end'] = pd.to_datetime(combined_df['end'], errors='coerce')
+    except Exception as e:
+        logger.error(f"Erreur lors de la conversion des dates : {str(e)}")
+        return {'monthly_trends': {}, 'employee_clusters': {}}
+
+    # Supprimer les lignes avec des dates invalides
+    original_len = len(combined_df)
+    combined_df = combined_df.dropna(subset=['start'])
+    if len(combined_df) < original_len:
+        logger.warning(f"{original_len - len(combined_df)} lignes supprimées à cause de dates invalides.")
+
+    if combined_df.empty:
+        logger.warning("Aucune entrée avec une date de début valide après nettoyage.")
+        return {'monthly_trends': {}, 'employee_clusters': {}}
+
+    # Extraire le mois des dates valides
+    combined_df['month'] = combined_df['start'].dt.month
+    monthly_counts = combined_df.groupby('month').size().to_dict()
+
+    # Vérifier le nombre d'employés uniques
+    unique_employees = combined_df['employee__username'].nunique()
+    logger.info(f"Nombre d'employés uniques : {unique_employees}")
+
+    # Clustering pour identifier les employés avec des comportements similaires
+    employee_months = combined_df.pivot_table(
+        index='employee__username',
+        columns='month',
+        values='type',
+        aggfunc='count',
+        fill_value=0
+    )
+
+    logger.info(f"Tableau pivot pour clustering : \n{employee_months.to_string()}")
+
+    employee_clusters = {}
+    if unique_employees > 1:
+        try:
+            kmeans = KMeans(n_clusters=min(3, len(employee_months)), random_state=42)
+            clusters = kmeans.fit_predict(employee_months)
+            employee_clusters = dict(zip(employee_months.index, clusters))
+        except Exception as e:
+            logger.error(f"Erreur lors du clustering K-means : {str(e)}")
+    else:
+        logger.warning("Pas assez d'employés uniques pour le clustering (nécessite au moins 2).")
+
+    return {
+        'monthly_trends': monthly_counts,
+        'employee_clusters': employee_clusters
+    }
+
+@login_required
+def leave_analysis_view(request):
+    # Vérifier les autorisations
+    try:
+        profil = Profil.objects.get(user=request.user)
+
+    except Profil.DoesNotExist:
+        messages.error(request, "Profil non trouvé.")
+        return redirect('employee')
+
+    # Collecter l'historique des congés et autorisations (exclure les absences)
+    try:
+        conges = Conge.objects.filter(status__iexact='approved').values('employee__username', 'start_date', 'end_date', 'type_conge__type')
+        autorisations = Autorisation.objects.filter(status__iexact='approved').values('employee__username', 'start_datetime', 'end_datetime', 'duration')
+    except Exception as e:
+        logger.error(f"Erreur lors de la récupération des données : {str(e)}")
+        messages.error(request, "Erreur lors de la récupération des données.")
+        return render(request, 'ITservBack/leave_analysis.html', {'total_leaves': 0})
+
+    logger.info(f"Congés récupérés : {conges.count()}, Autorisations : {autorisations.count()}")
+
+    # Convertir en DataFrames
+    conges_df = pd.DataFrame(list(conges))
+    autorisations_df = pd.DataFrame(list(autorisations))
+
+    logger.info(f"Nombre de congés : {len(conges_df)}, autorisations : {len(autorisations_df)}")
+
+    # Ajouter une colonne 'type' et renommer les colonnes
+    if not conges_df.empty:
+        conges_df['type'] = 'Conge'
+        conges_df = conges_df.rename(columns={'start_date': 'start', 'end_date': 'end', 'type_conge__type': 'reason'})
+    else:
+        conges_df = pd.DataFrame(columns=['employee__username', 'start', 'end', 'reason', 'type'])
+
+    if not autorisations_df.empty:
+        autorisations_df['type'] = 'Autorisation'
+        autorisations_df = autorisations_df.rename(columns={'start_datetime': 'start', 'end_datetime': 'end', 'duration': 'reason'})
+    else:
+        autorisations_df = pd.DataFrame(columns=['employee__username', 'start', 'end', 'reason', 'type'])
+
+    # Combiner les données
+    try:
+        combined_df = pd.concat([conges_df, autorisations_df], ignore_index=True)
+    except Exception as e:
+        logger.error(f"Erreur lors de la concaténation des DataFrames : {str(e)}")
+        combined_df = pd.DataFrame(columns=['employee__username', 'start', 'end', 'reason', 'type'])
+
+    logger.info(f"Nombre total d'entrées dans combined_df : {len(combined_df)}")
+    if not combined_df.empty:
+        logger.info(f"Aperçu de combined_df : \n{combined_df.to_string()}")
+
+    # Analyser les tendances
+    analysis_results = analyze_leave_trends(combined_df)
+
+    context = {
+        'total_leaves': len(combined_df),
+        'monthly_trends': analysis_results['monthly_trends'],
+        'employee_clusters': analysis_results['employee_clusters'],
+    }
+    return render(request, 'ITservBack/leave_analysis.html', context)
+
+
+@login_required
+def leave_planning_view(request):
+    logger.info("Entrée dans leave_planning_view")
+    logger.info(f"Utilisateur authentifié : {request.user.is_authenticated}")
+    if not request.user.is_authenticated:
+        logger.error("Utilisateur non authentifié, redirection vers login")
+        return redirect('login')
+
+    logger.info(f"Utilisateur : {request.user.username}")
+    try:
+        profil = Profil.objects.get(user=request.user)
+        logger.info(f"Profil trouvé : {profil.poste}")
+        if profil.poste == 'ResponsableRH':
+            logger.warning("Utilisateur non autorisé, redirection vers 'employee'")
+            messages.error(request, "Vous n'êtes pas autorisé à générer un planning.")
+            return redirect('employee')
+    except Profil.DoesNotExist:
+        logger.error("Profil non trouvé, redirection vers 'employee'")
+        messages.error(request, "Profil non trouvé.")
+        return redirect('employee')
+
+    start_date = timezone.now().date()
+    end_date = start_date + timedelta(days=29)
+
+    if request.method == 'POST':
+        logger.info("Traitement de la requête POST")
+        start_date = request.POST.get('start_date')
+        end_date = request.POST.get('end_date')
+        try:
+            if not start_date or not end_date:
+                raise ValueError("Les dates de début et de fin sont requises.")
+            start_date = timezone.datetime.strptime(start_date, '%Y-%m-%d').date()
+            end_date = timezone.datetime.strptime(end_date, '%Y-%m-%d').date()
+            if start_date > end_date:
+                raise ValueError("La date de fin doit être postérieure à la date de début.")
+            if start_date < timezone.now().date():
+                raise ValueError("La date de début ne peut pas être dans le passé.")
+
+            logger.info("Lancement de la génération du planning")
+            task = generate_leave_planning.delay(start_date=start_date.strftime('%Y-%m-%d'),
+                                               end_date=end_date.strftime('%Y-%m-%d'))
+            logger.info(f"Tâche lancée avec succès. ID : {task.id}")
+            messages.success(request, f"Tâche de génération du planning lancée. ID de la tâche : {task.id}")
+        except ValueError as e:
+            logger.error(f"Erreur de validation des dates : {str(e)}")
+            messages.error(request, str(e))
+        except Exception as e:
+            logger.error(f"Erreur lors de la génération du planning : {str(e)}")
+            messages.error(request, f"Erreur : {str(e)}")
+        return redirect(f"{request.path}?start_date={start_date}&end_date={end_date}")
+
+    if 'start_date' in request.GET:
+        try:
+            start_date = timezone.datetime.strptime(request.GET.get('start_date'), '%Y-%m-%d').date()
+            end_date = timezone.datetime.strptime(request.GET.get('end_date'), '%Y-%m-%d').date()
+            if start_date > end_date:
+                messages.error(request, "La date de fin doit être postérieure à la date de début.")
+                return redirect('leave_planning')
+        except ValueError:
+            messages.error(request, "Format de date invalide. Utilisez AAAA-MM-JJ.")
+            return redirect('leave_planning')
+
+    planning_days = [(start_date + timedelta(days=i)) for i in range((end_date - start_date).days + 1)]
+    first_day = datetime(start_date.year, start_date.month, 1)
+    num_days = monthrange(start_date.year, start_date.month)[1]
+    last_day = first_day + timedelta(days=num_days - 1)
+    first_weekday = first_day.weekday()
+
+    conges = Conge.objects.filter(
+        status='planned',
+        start_date__lte=end_date,
+        end_date__gte=start_date
+    ).select_related('employee')
+
+    employees = User.objects.filter(profil__poste='EMPLOYE').order_by('username')
+    employee_colors = {}
+    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5', '#9B59B6', '#3498DB', '#E74C3C', '#2ECC71']
+    for idx, emp in enumerate(employees):
+        employee_colors[emp.id] = colors[idx % len(colors)]
+
+    days = []
+    for day in range(1, num_days + 1):
+        current_date = datetime(start_date.year, start_date.month, day).date()
+        if current_date < start_date or current_date > end_date:
+            days.append({
+                'day': day,
+                'date': current_date,
+                'employees_on_leave': []
+            })
+            continue
+
+        employees_on_leave = []
+        for conge in conges:
+            if conge.start_date <= current_date <= conge.end_date:
+                employees_on_leave.append({
+                    'username': conge.employee.username,
+                    'color': employee_colors[conge.employee.id]
+                })
+        days.append({
+            'day': day,
+            'date': current_date,
+            'employees_on_leave': employees_on_leave
+        })
+
+    calendar_grid = []
+    current_day = 1
+    for week in range(6):
+        week_row = []
+        for day in range(7):
+            if (week == 0 and day < first_weekday) or current_day > num_days:
+                week_row.append(None)
+            else:
+                for entry in days:
+                    if entry['day'] == current_day:
+                        week_row.append(entry)
+                        current_day += 1
+                        break
+        calendar_grid.append(week_row)
+
+    context = {
+        'start_date': start_date,
+        'end_date': end_date,
+        'calendar_grid': calendar_grid,
+        'month_name': first_day.strftime('%B %Y'),
+        'weekdays': ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
+        'employee_colors': employee_colors,
+        'employees': employees,
+    }
+    return render(request, 'ITservBack/leave_planning.html', context)
+
+def test_leave_planning(request):
+    # Définir une période fixe pour le test (par exemple, avril 2025)
+    start_date = datetime(2025, 4, 1).date()
+    end_date = datetime(2025, 4, 30).date()
+
+    # Générer le planning (de manière synchrone pour simplifier)
+    try:
+        result = generate_leave_planning(start_date=start_date.strftime('%Y-%m-%d'),
+                                       end_date=end_date.strftime('%Y-%m-%d'))
+        if result['status'] != 'success':
+            return HttpResponse(f"Erreur lors de la génération : {result['message']}", status=500)
+    except Exception as e:
+        return HttpResponse(f"Erreur : {str(e)}", status=500)
+
+    # Récupérer les congés planifiés
+    conges = Conge.objects.filter(
+        status='planned',
+        start_date__lte=end_date,
+        end_date__gte=start_date
+    ).select_related('employee')
+
+    # Préparer les données du calendrier
+    planning_days = [(start_date + timedelta(days=i)) for i in range((end_date - start_date).days + 1)]
+    first_day = datetime(start_date.year, start_date.month, 1)
+    num_days = monthrange(start_date.year, start_date.month)[1]
+    last_day = first_day + timedelta(days=num_days - 1)
+    first_weekday = first_day.weekday()  # 0 = Lundi, 6 = Dimanche
+
+    # Créer une liste des employés pour la légende
+    employees = User.objects.filter(profil__poste='EMPLOYE').order_by('username')
+    employee_colors = {}
+    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5', '#9B59B6', '#3498DB', '#E74C3C', '#2ECC71']
+    for idx, emp in enumerate(employees):
+        employee_colors[emp.id] = colors[idx % len(colors)]
+
+    # Créer une liste de jours avec les congés
+    days = []
+    for day in range(1, num_days + 1):
+        current_date = datetime(start_date.year, start_date.month, day).date()
+        if current_date < start_date or current_date > end_date:
+            days.append({
+                'day': day,
+                'date': current_date,
+                'employees_on_leave': []
+            })
+            continue
+
+        employees_on_leave = []
+        for conge in conges:
+            if conge.start_date <= current_date <= conge.end_date:
+                employees_on_leave.append({
+                    'username': conge.employee.username,
+                    'color': employee_colors[conge.employee.id]
+                })
+        days.append({
+            'day': day,
+            'date': current_date,
+            'employees_on_leave': employees_on_leave
+        })
+
+    # Créer une grille pour le calendrier
+    calendar_grid = []
+    current_day = 1
+    for week in range(6):
+        week_row = []
+        for day in range(7):
+            if (week == 0 and day < first_weekday) or current_day > num_days:
+                week_row.append(None)
+            else:
+                for entry in days:
+                    if entry['day'] == current_day:
+                        week_row.append(entry)
+                        current_day += 1
+                        break
+        calendar_grid.append(week_row)
+
+    context = {
+        'start_date': start_date,
+        'end_date': end_date,
+        'calendar_grid': calendar_grid,
+        'month_name': first_day.strftime('%B %Y'),
+        'weekdays': ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
+        'employee_colors': employee_colors,
+        'employees': employees,
+    }
+    return render(request, 'ITservBack/test_leave_planning.html', context)
+def leave_events(request):
+    start_date = request.GET.get('start_date', timezone.now().date())
+    end_date = request.GET.get('end_date', (timezone.now().date() + timedelta(days=29)))
+    try:
+        start_date = timezone.datetime.strptime(start_date, '%Y-%m-%d').date()
+        end_date = timezone.datetime.strptime(end_date, '%Y-%m-%d').date()
+    except ValueError:
+        return JsonResponse({'error': 'Invalid date format'}, status=400)
+
+    conges = Conge.objects.filter(
+        status='planned',
+        start_date__lte=end_date,
+        end_date__gte=start_date
+    ).select_related('employee')
+
+    employees = User.objects.filter(profil__poste='EMPLOYE')
+    employee_colors = {}
+    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5', '#9B59B6', '#3498DB', '#E74C3C', '#2ECC71']
+    for idx, emp in enumerate(employees):
+        employee_colors[emp.id] = colors[idx % len(colors)]
+
+    events = []
+    for conge in conges:
+        events.append({
+            'title': conge.employee.username,
+            'start': conge.start_date.strftime('%Y-%m-%d'),
+            'end': (conge.end_date + timedelta(days=1)).strftime('%Y-%m-%d'),  # FullCalendar exclut le dernier jour
+            'backgroundColor': employee_colors[conge.employee.id],
+            'borderColor': employee_colors[conge.employee.id],
+        })
+    return JsonResponse(events, safe=False)

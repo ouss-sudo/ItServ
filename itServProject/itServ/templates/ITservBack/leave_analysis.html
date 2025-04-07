@@ -1,0 +1,89 @@
+<!-- ITservBack/templates/ITservBack/leave_analysis.html -->
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Analyse des congés - ITserv{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1>Analyse des congés et absences</h1>
+
+    <!-- Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- Résumé -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="card-title mb-0">Résumé</h5>
+        </div>
+        <div class="card-body">
+            <p>Nombre total de congés/absences/autorisations : {{ total_leaves }}</p>
+        </div>
+    </div>
+
+    <!-- Tendances mensuelles -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="card-title mb-0">Tendances mensuelles</h5>
+        </div>
+        <div class="card-body">
+            {% if monthly_trends %}
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Mois</th>
+                            <th>Nombre de congés</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for month, count in monthly_trends.items %}
+                            <tr>
+                                <td>{{ month }}</td>
+                                <td>{{ count }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p>Aucune donnée disponible pour l'analyse mensuelle.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Clusters d'employés -->
+    <div class="card">
+        <div class="card-header bg-primary text-white">
+            <h5 class="card-title mb-0">Groupes d'employés</h5>
+        </div>
+        <div class="card-body">
+            {% if employee_clusters %}
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Employé</th>
+                            <th>Groupe</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for employee, cluster in employee_clusters.items %}
+                            <tr>
+                                <td>{{ employee }}</td>
+                                <td>{{ cluster }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p>Aucune donnée suffisante pour le regroupement des employés.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

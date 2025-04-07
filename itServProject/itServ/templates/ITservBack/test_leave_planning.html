@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Leave Planning</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container mt-4">
+        <h2>Test Planning des congés</h2>
+
+        <!-- Légende des employés -->
+        <div class="mb-4">
+            <h4>Légende</h4>
+            <div class="d-flex flex-wrap">
+                {% for emp in employees %}
+                    <div class="mr-3 mb-2">
+                        <span style="display: inline-block; width: 20px; height: 20px; background-color: {{ employee_colors.emp.id }};"></span>
+                        <span class="ml-1">{{ emp.username }}</span>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Calendrier -->
+        <h4>Planning pour {{ month_name }}</h4>
+        <table class="table table-bordered calendar-table">
+            <thead>
+                <tr>
+                    {% for weekday in weekdays %}
+                        <th class="text-center">{{ weekday }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for week in calendar_grid %}
+                    <tr>
+                        {% for day in week %}
+                            {% if day %}
+                                <td class="text-center">
+                                    <div>{{ day.day }}</div>
+                                    {% for emp in day.employees_on_leave %}
+                                        <div style="background-color: {{ emp.color }}; color: white; margin-top: 2px; padding: 2px;">
+                                            {{ emp.username }}
+                                        </div>
+                                    {% endfor %}
+                                </td>
+                            {% else %}
+                                <td class="text-center bg-light"> </td>
+                            {% endif %}
+                        {% endfor %}
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <style>
+    .calendar-table td {
+        vertical-align: top;
+        height: 100px;
+        width: 14.28%;
+    }
+    .calendar-table td div {
+        font-size: 14px;
+    }
+    </style>
+</body>
+</html>

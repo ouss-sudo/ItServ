@@ -53,6 +53,7 @@ class Conge(models.Model):
             ('En attente', 'En attente'),
             ('Approuvé', 'Approuvé'),
             ('Refusé', 'Refusé'),
+            ('planned', 'Planifié'),
         ],
         default='En attente'
     )
@@ -125,3 +126,12 @@ class Autorisation(models.Model):
 
     def __str__(self):
         return f"Autorisation de {self.employee.username} du {self.start_datetime}"
+class LeavePreference(models.Model):
+    employee = models.ForeignKey(User, on_delete=models.CASCADE)
+    preferred_start_date = models.DateField()
+    preferred_end_date = models.DateField()
+    priority = models.IntegerField(default=1)  # 1 = haute priorité, 5 = basse
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Préférence de {self.employee.username} : {self.preferred_start_date} à {self.preferred_end_date}"
