@@ -1,0 +1,31 @@
+<!-- ITservBack/validate_leave_planning.html -->
+{% extends "base.html" %}
+{% load static %}
+
+<h2>Validation du planning de congés</h2>
+<p>Période : {{ start_date }} à {{ end_date }}</p>
+<table>
+    <thead>
+        <tr>
+            <th>Employé</th>
+            <th>Début</th>
+            <th>Fin</th>
+            <th>Raison</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for conge in conges %}
+        <tr>
+            <td>{{ conge.employee.username }}</td>
+            <td>{{ conge.start_date }}</td>
+            <td>{{ conge.end_date }}</td>
+            <td>{{ conge.reason }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" name="action" value="approve">Approuver</button>
+    <button type="submit" name="action" value="reject">Rejeter</button>
+</form>

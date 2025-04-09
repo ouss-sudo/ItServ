@@ -2,6 +2,7 @@
 {% extends "base.html" %}
 {% load static %}
 
+
 {% block title %}Analyse des congés - ITserv{% endblock %}
 
 {% block content %}
@@ -34,26 +35,7 @@
             <h5 class="card-title mb-0">Tendances mensuelles</h5>
         </div>
         <div class="card-body">
-            {% if monthly_trends %}
-                <table class="table table-bordered">
-                    <thead>
-                        <tr>
-                            <th>Mois</th>
-                            <th>Nombre de congés</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for month, count in monthly_trends.items %}
-                            <tr>
-                                <td>{{ month }}</td>
-                                <td>{{ count }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            {% else %}
-                <p>Aucune donnée disponible pour l'analyse mensuelle.</p>
-            {% endif %}
+            {{ monthly_chart | safe }}
         </div>
     </div>
 
@@ -83,6 +65,10 @@
             {% else %}
                 <p>Aucune donnée suffisante pour le regroupement des employés.</p>
             {% endif %}
+            <h3>Clusters d'Employés</h3>
+            <div>
+                {{ cluster_chart | safe }}
+            </div>
         </div>
     </div>
 </div>

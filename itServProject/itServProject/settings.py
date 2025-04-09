@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 from pathlib import Path
+from celery.schedules import crontab
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -96,7 +97,12 @@ DATABASES = {
         },
     }
 }
-
+CELERY_BEAT_SCHEDULE = {
+    'monitor-leave-changes-every-hour': {
+        'task': 'itServ.tasks.monitor_leave_changes',
+        'schedule': crontab(minute=0),  # Toutes les heures
+    },
+}
 # Configuration pour Gmail avec 2FA et mot de passe d'application
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'

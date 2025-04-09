@@ -1,0 +1,15 @@
+<!-- ITservBack/adjust_leave_planning.html -->
+{% extends "base.html" %}
+{% load static %}
+
+<h2>Ajuster les contraintes du planning</h2>
+<form method="post">
+    {% csrf_token %}
+    <label for="start_date">Date de début :</label>
+    <input type="date" name="start_date" required>
+    <label for="end_date">Date de fin :</label>
+    <input type="date" name="end_date" required>
+    <label for="min_employees_present">Nombre minimum d'employés présents :</label>
+    <input type="number" name="min_employees_present" value="2" min="1">
+    <button type="submit">Relancer la génération</button>
+</form>

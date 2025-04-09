@@ -28,9 +28,7 @@
     <li class="nav-item">
         <a href="{% url 'leave_planning' %}" class="nav-link">Génération du planning</a>
     </li>
-                 <li class="nav-item">
-        <a href="{% url 'test_leave_planning' %}" class="nav-link">test du planning</a>
-    </li>
+                <li class="nav-item">
                 <li class="nav-item">
                     <a href="{% url 'employee' %}" class="nav-link {% if request.path == '/employee/' %}active{% endif %}">
                         <i class="bi bi-file-earmark-text me-2"></i> Congés / Autorisations
@@ -41,6 +39,7 @@
                         <i class="bi bi-person me-2"></i> Demandes
                     </a>
                 </li>
+
                 <li class="nav-item">
                     <a href="{% url 'employee' %}" class="nav-link">
                         <i class="bi bi-clock-history me-2"></i> Historique

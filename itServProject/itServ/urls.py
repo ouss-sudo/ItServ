@@ -42,6 +42,7 @@ urlpatterns = [
     path('autorisation/reject/<int:id>/', views.reject_autorisation, name='reject_autorisation'),
     path('responsablerh/leave-analysis/', views.leave_analysis_view, name='leave_analysis'),
     path('responsablerh/leave-planning/', views.leave_planning_view, name='leave_planning'),
-    path('test-leave-planning/', views.test_leave_planning, name='test_leave_planning'),
     path('leave-events/', views.leave_events, name='leave_events'),
+    path('submit-leave-from-planning/', views.submit_leave_from_planning,name='submit_leave_from_planning'),
+
               ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

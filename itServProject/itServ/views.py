@@ -5,9 +5,10 @@ from django.contrib.auth.models import User
 from .models import Autorisation
 from sklearn.cluster import KMeans
 from celery.exceptions import OperationalError
-
 from django.contrib import messages
 from django.views import View
+from .forms import LeaveRequestForm  # Add this import
+
 from django.utils.decorators import method_decorator
 from django.http import HttpResponse
 import pandas as pd
@@ -19,6 +20,7 @@ from datetime import datetime, timedelta
 from calendar import monthrange
 from django.utils import timezone
 from calendar import monthrange
+from .tasks import generate_leave_planning  # Add this line
 
 from celery import shared_task
 from django.utils import timezone
@@ -46,7 +48,7 @@ from .models import Notification  #
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.contrib import messages
 
-from .tasks import generate_leave_planning  # Importer depuis tasks.py
+#from .tasks import generate_leave_planning  # Importer depuis tasks.py
 
 import string
 import logging
@@ -74,111 +76,112 @@ def home(request):
 
 @login_required
 def employee(request):
-
     try:
         profil = Profil.objects.get(user=request.user)
         poste = profil.poste
     except Profil.DoesNotExist:
         poste = 'EMPLOYE'
         logger.warning(f"Profil non trouvé pour l'utilisateur {request.user.username}, poste par défaut : EMPLOYE")
-        # Get year and month, handling empty strings
-        year_str = request.GET.get('year', str(timezone.now().year))
-        month_str = request.GET.get('month', str(timezone.now().month))
 
-        # Convert to integers, defaulting to current year/month if invalid or empty
-        try:
-            year = int(year_str) if year_str.strip() else timezone.now().year
-        except ValueError:
-            year = timezone.now().year
-            logger.warning(f"Invalid year value: {year_str}, defaulting to {year}")
+    # Get year and month, handling empty strings
+    year_str = request.GET.get('year', str(timezone.now().year))
+    month_str = request.GET.get('month', str(timezone.now().month))
 
-        try:
-            month = int(month_str) if month_str.strip() else timezone.now().month
-        except ValueError:
-            month = timezone.now().month
-            logger.warning(f"Invalid month value: {month_str}, defaulting to {month}")
+    # Convert to integers, defaulting to current year/month if invalid or empty
+    try:
+        year = int(year_str) if year_str.strip() else timezone.now().year
+    except ValueError:
+        year = timezone.now().year
+        logger.warning(f"Invalid year value: {year_str}, defaulting to {year}")
 
-        # Normaliser le mois et l'année
-        if month < 1:
-            month = 12
-            year -= 1
-        elif month > 12:
-            month = 1
-            year += 1
+    try:
+        month = int(month_str) if month_str.strip() else timezone.now().month
+    except ValueError:
+        month = timezone.now().month
+        logger.warning(f"Invalid month value: {month_str}, defaulting to {month}")
 
-        # Logique du calendrier
-        first_day = datetime(year, month, 1)
-        num_days = monthrange(year, month)[1]
-        last_day = first_day + timedelta(days=num_days - 1)
-        first_weekday = first_day.weekday()
+    # Normaliser le mois et l'année
+    if month < 1:
+        month = 12
+        year -= 1
+    elif month > 12:
+        month = 1
+        year += 1
 
-        pointages = Pointage.objects.filter(
-            employe=request.user,
-            date__range=[first_day, last_day]
-        ).values('date', 'heure_entree')
+    # Logique du calendrier
+    first_day = datetime(year, month, 1)
+    num_days = monthrange(year, month)[1]
+    last_day = first_day + timedelta(days=num_days - 1)
+    first_weekday = first_day.weekday()
 
-        conges = Conge.objects.filter(
-            employee=request.user,
-            start_date__lte=last_day,
-            end_date__gte=first_day
-        ).values('start_date', 'end_date')
+    pointages = Pointage.objects.filter(
+        employe=request.user,
+        date__range=[first_day, last_day]
+    ).values('date', 'heure_entree')
 
-        absences = Absence.objects.filter(
-            employee=request.user,
-            start_date__lte=last_day,
-            end_date__gte=first_day
-        ).values('start_date', 'end_date')
+    conges = Conge.objects.filter(
+        employee=request.user,
+        start_date__lte=last_day,
+        end_date__gte=first_day
+    ).values('start_date', 'end_date')
 
-        days = []
-        for day in range(1, num_days + 1):
-            current_date = datetime(year, month, day).date()
-            days.append({
-                'day': day,
-                'date': current_date,
-                'worked': False,
-                'absent': False
-            })
+    absences = Absence.objects.filter(
+        employee=request.user,
+        start_date__lte=last_day,
+        end_date__gte=first_day
+    ).values('start_date', 'end_date')
 
-        for pointage in pointages:
+    days = []
+    for day in range(1, num_days + 1):
+        current_date = datetime(year, month, day).date()
+        days.append({
+            'day': day,
+            'date': current_date,
+            'worked': False,
+            'absent': False
+        })
+
+    for pointage in pointages:
+        for entry in days:
+            if entry['date'] == pointage['date'] and pointage['heure_entree']:
+                entry['worked'] = True
+
+    for conge in conges:
+        start = max(conge['start_date'], first_day.date())
+        end = min(conge['end_date'], last_day.date())
+        while start <= end:
             for entry in days:
-                if entry['date'] == pointage['date'] and pointage['heure_entree']:
-                    entry['worked'] = True
+                if entry['date'] == start:
+                    entry['absent'] = True
+                    entry['worked'] = False
+            start += timedelta(days=1)
 
-        for conge in conges:
-            start = max(conge['start_date'], first_day.date())
-            end = min(conge['end_date'], last_day.date())
-            while start <= end:
+    for absence in absences:
+        start = max(absence['start_date'], first_day.date())
+        end = min(absence['end_date'], last_day.date())
+        while start <= end:
+            for entry in days:
+                if entry['date'] == start:
+                    entry['absent'] = True
+                    entry['worked'] = False
+            start += timedelta(days=1)
+
+    calendar_grid = []
+    current_day = 1
+    for week in range(6):
+        week_row = []
+        for day in range(7):
+            if (week == 0 and day < first_weekday) or current_day > num_days:
+                week_row.append(None)
+            else:
                 for entry in days:
-                    if entry['date'] == start:
-                        entry['absent'] = True
-                        entry['worked'] = False
-                start += timedelta(days=1)
+                    if entry['day'] == current_day:
+                        week_row.append(entry)
+                        current_day += 1
+                        break
+        calendar_grid.append(week_row)
 
-        for absence in absences:
-            start = max(absence['start_date'], first_day.date())
-            end = min(absence['end_date'], last_day.date())
-            while start <= end:
-                for entry in days:
-                    if entry['date'] == start:
-                        entry['absent'] = True
-                        entry['worked'] = False
-                start += timedelta(days=1)
-
-        calendar_grid = []
-        current_day = 1
-        for week in range(6):
-            week_row = []
-            for day in range(7):
-                if (week == 0 and day < first_weekday) or current_day > num_days:
-                    week_row.append(None)
-                else:
-                    for entry in days:
-                        if entry['day'] == current_day:
-                            week_row.append(entry)
-                            current_day += 1
-                            break
-            calendar_grid.append(week_row)
-        # Gestion du filtre
+    # Gestion du filtre
     start_date_from = request.GET.get('start_date_from')
     start_date_to = request.GET.get('start_date_to')
 
@@ -345,40 +348,84 @@ def employee(request):
                 messages.error(request, f"Erreur lors de la soumission de la demande : {str(e)}")
                 logger.error(f"Erreur lors de la soumission de la demande d'absence : {str(e)}")
 
-        # Logique pour soumettre une nouvelle demande de congé
-    if request.method == 'POST' and 'type_conge' in request.POST and 'start_date' in request.POST:
-        type_conge_id = request.POST.get('type_conge')
-        start_date = request.POST.get('start_date')
-        end_date = request.POST.get('end_date')
-        reason = request.POST.get('reason')
+            # Logique pour soumettre une nouvelle demande de congé
+        if request.method == 'POST' and 'type_conge' in request.POST and 'start_date' in request.POST:
+            type_conge_id = request.POST.get('type_conge')
+            start_date = request.POST.get('start_date')
+            end_date = request.POST.get('end_date')
+            reason = request.POST.get('reason')
 
-        if not start_date or not end_date or not reason:
-            messages.error(request, "Veuillez remplir tous les champs obligatoires.")
-        else:
-            try:
-                start_date = timezone.datetime.strptime(start_date, '%Y-%m-%d').date()
-                end_date = timezone.datetime.strptime(end_date, '%Y-%m-%d').date()
-                if start_date > end_date:
-                    raise ValidationError("La date de fin doit être postérieure à la date de début.")
-                if start_date < timezone.now().date():
-                    raise ValidationError("La date de début ne peut pas être dans le passé.")
+            if not start_date or not end_date or not reason:
+                messages.error(request, "Veuillez remplir tous les champs obligatoires.")
+            else:
+                try:
+                    start_date = timezone.datetime.strptime(start_date, '%Y-%m-%d').date()
+                    end_date = timezone.datetime.strptime(end_date, '%Y-%m-%d').date()
+                    if start_date > end_date:
+                        raise ValidationError("La date de fin doit être postérieure à la date de début.")
+                    if start_date < timezone.now().date():
+                        raise ValidationError("La date de début ne peut pas être dans le passé.")
 
-                leave = Conge(
-                    employee=request.user,
-                    type_conge_id=type_conge_id,
-                    start_date=start_date,
-                    end_date=end_date,
-                    reason=reason,
-                )
-                leave.save()
-                messages.success(request, "Demande de congé soumise avec succès !")
-                return redirect('employee')
-            except ValueError:
-                messages.error(request, "Format de date invalide. Utilisez AAAA-MM-JJ.")
-            except ValidationError as e:
-                messages.error(request, str(e))
+                    # Vérifier les chevauchements avec les congés existants (approuvés ou planifiés) d'autres employés
+                    overlapping_leaves = Conge.objects.filter(
+                        status__in=['approved', 'planned'],  # Vérifier les congés approuvés ou planifiés
+                        employee__profil__poste='EMPLOYE',  # Seulement les employés
+                        start_date__lte=end_date,  # Le congé existant commence avant la fin de la demande
+                        end_date__gte=start_date  # Le congé existant se termine après le début de la demande
+                    ).exclude(employee=request.user)  # Exclure l'utilisateur actuel
 
-        # Logique pour ajouter un nouveau type de congé
+                    if overlapping_leaves.exists():
+                        # Si un chevauchement est trouvé, afficher un message d'erreur
+                        overlapping_leave = overlapping_leaves.first()
+                        messages.error(
+                            request,
+                            f"Les dates demandées ({start_date} au {end_date}) chevauchent un congé existant de "
+                            f"{overlapping_leave.employee.username} (du {overlapping_leave.start_date} au "
+                            f"{overlapping_leave.end_date}). Veuillez choisir d'autres dates."
+                        )
+                        logger.warning(
+                            f"Chevauchement détecté pour {request.user.username} : demande ({start_date} au {end_date}) "
+                            f"chevauche le congé de {overlapping_leave.employee.username} "
+                            f"({overlapping_leave.start_date} au {overlapping_leave.end_date})"
+                        )
+                    else:
+                        # Si aucun chevauchement, créer la demande de congé
+                        leave = Conge(
+                            employee=request.user,
+                            type_conge_id=type_conge_id,
+                            start_date=start_date,
+                            end_date=end_date,
+                            reason=reason,
+                        )
+                        leave.save()
+
+                        # Notification pour l'utilisateur
+                        Notification.objects.create(
+                            user=request.user,
+                            message=f"Nouvelle demande de congé soumise du {start_date} au {end_date}."
+                        )
+
+                        # Notification pour les Responsables RH
+                        responsables_rh = Profil.objects.filter(poste='ResponsableRH')
+                        for profil in responsables_rh:
+                            Notification.objects.create(
+                                user=profil.user,
+                                message=f"Nouvelle demande de congé de {request.user.username} du {start_date} au {end_date}."
+                            )
+
+                        messages.success(request, "Demande de congé soumise avec succès !")
+                        logger.info(f"Demande de congé créée avec succès : ID={leave.id}")
+                        return redirect('employee')
+
+                except ValueError:
+                    messages.error(request, "Format de date invalide. Utilisez AAAA-MM-JJ.")
+                except ValidationError as e:
+                    messages.error(request, str(e))
+                except Exception as e:
+                    messages.error(request, f"Erreur lors de la soumission de la demande : {str(e)}")
+                    logger.error(f"Erreur lors de la soumission de la demande de congé : {str(e)}")
+
+    # Logique pour ajouter un nouveau type de congé
     if request.method == 'POST' and 'new_type_conge' in request.POST:
         new_type = request.POST.get('new_type_conge')
         if new_type:
@@ -388,6 +435,7 @@ def employee(request):
             except Exception as e:
                 messages.error(request, f"Erreur lors de l'ajout : {str(e)}")
         return redirect('employee')
+
     # Logique pour ajouter un nouveau type d'absence
     if request.method == 'POST' and 'new_type_absence' in request.POST:
         if request.user.profil.poste == 'EMPLOYE' or request.user.is_superuser:
@@ -437,8 +485,6 @@ def employee(request):
         'autorisations': autorisations,
         'start_date_from': start_date_from,
         'start_date_to': start_date_to,
-        # Données du calendrier
-
     }
     return render(request, "ITservBack/employe_dashboard.html", context)
 def logout_view(request):  # Nouvelle vue pour la déconnexion
@@ -1492,7 +1538,7 @@ def accept_autorisation(request, id):
 def reject_autorisation(request, id):
     try:
         profil = Profil.objects.get(user=request.user)
-        if profil.poste != 'EMPLOYE':
+        if profil.poste != 'ResponsableRH':
             messages.error(request, "Vous n'avez pas les autorisations nécessaires pour effectuer cette action.")
             return redirect('employee')
     except Profil.DoesNotExist:
@@ -1505,97 +1551,30 @@ def reject_autorisation(request, id):
     messages.success(request, f"La demande d'autorisation de {autorisation.employee.username} a été refusée.")
     return redirect('responsable_rh_dashboard')
 
-def analyze_leave_trends(combined_df):
-    if combined_df.empty:
-        logger.warning("Aucun congé ou autorisation trouvé pour l'analyse.")
-        return {'monthly_trends': {}, 'employee_clusters': {}}
-
-    logger.info(f"Colonnes de combined_df : {combined_df.columns.tolist()}")
-    logger.info(f"Aperçu de combined_df : \n{combined_df.to_string()}")
-
-    # Nettoyer et convertir les dates
-    try:
-        combined_df['start'] = pd.to_datetime(combined_df['start'], errors='coerce')
-        combined_df['end'] = pd.to_datetime(combined_df['end'], errors='coerce')
-    except Exception as e:
-        logger.error(f"Erreur lors de la conversion des dates : {str(e)}")
-        return {'monthly_trends': {}, 'employee_clusters': {}}
-
-    # Supprimer les lignes avec des dates invalides
-    original_len = len(combined_df)
-    combined_df = combined_df.dropna(subset=['start'])
-    if len(combined_df) < original_len:
-        logger.warning(f"{original_len - len(combined_df)} lignes supprimées à cause de dates invalides.")
-
-    if combined_df.empty:
-        logger.warning("Aucune entrée avec une date de début valide après nettoyage.")
-        return {'monthly_trends': {}, 'employee_clusters': {}}
-
-    # Extraire le mois des dates valides
-    combined_df['month'] = combined_df['start'].dt.month
-    monthly_counts = combined_df.groupby('month').size().to_dict()
-
-    # Vérifier le nombre d'employés uniques
-    unique_employees = combined_df['employee__username'].nunique()
-    logger.info(f"Nombre d'employés uniques : {unique_employees}")
-
-    # Clustering pour identifier les employés avec des comportements similaires
-    employee_months = combined_df.pivot_table(
-        index='employee__username',
-        columns='month',
-        values='type',
-        aggfunc='count',
-        fill_value=0
-    )
-
-    logger.info(f"Tableau pivot pour clustering : \n{employee_months.to_string()}")
-
-    employee_clusters = {}
-    if unique_employees > 1:
-        try:
-            kmeans = KMeans(n_clusters=min(3, len(employee_months)), random_state=42)
-            clusters = kmeans.fit_predict(employee_months)
-            employee_clusters = dict(zip(employee_months.index, clusters))
-        except Exception as e:
-            logger.error(f"Erreur lors du clustering K-means : {str(e)}")
-    else:
-        logger.warning("Pas assez d'employés uniques pour le clustering (nécessite au moins 2).")
-
-    return {
-        'monthly_trends': monthly_counts,
-        'employee_clusters': employee_clusters
-    }
-
 @login_required
 def leave_analysis_view(request):
-    # Vérifier les autorisations
     try:
         profil = Profil.objects.get(user=request.user)
-
     except Profil.DoesNotExist:
         messages.error(request, "Profil non trouvé.")
         return redirect('employee')
 
-    # Collecter l'historique des congés et autorisations (exclure les absences)
+    # Collecter les données
     try:
         conges = Conge.objects.filter(status__iexact='approved').values('employee__username', 'start_date', 'end_date', 'type_conge__type')
         autorisations = Autorisation.objects.filter(status__iexact='approved').values('employee__username', 'start_datetime', 'end_datetime', 'duration')
+        logger.info(f"Congés récupérés : {len(list(conges))}, Autorisations : {len(list(autorisations))}")
     except Exception as e:
         logger.error(f"Erreur lors de la récupération des données : {str(e)}")
         messages.error(request, "Erreur lors de la récupération des données.")
         return render(request, 'ITservBack/leave_analysis.html', {'total_leaves': 0})
 
-    logger.info(f"Congés récupérés : {conges.count()}, Autorisations : {autorisations.count()}")
-
     # Convertir en DataFrames
     conges_df = pd.DataFrame(list(conges))
     autorisations_df = pd.DataFrame(list(autorisations))
 
-    logger.info(f"Nombre de congés : {len(conges_df)}, autorisations : {len(autorisations_df)}")
-
-    # Ajouter une colonne 'type' et renommer les colonnes
     if not conges_df.empty:
-        conges_df['type'] = 'Conge'
+        conges= conges_df['type'] = 'Conge'
         conges_df = conges_df.rename(columns={'start_date': 'start', 'end_date': 'end', 'type_conge__type': 'reason'})
     else:
         conges_df = pd.DataFrame(columns=['employee__username', 'start', 'end', 'reason', 'type'])
@@ -1606,37 +1585,138 @@ def leave_analysis_view(request):
     else:
         autorisations_df = pd.DataFrame(columns=['employee__username', 'start', 'end', 'reason', 'type'])
 
-    # Combiner les données
-    try:
-        combined_df = pd.concat([conges_df, autorisations_df], ignore_index=True)
-    except Exception as e:
-        logger.error(f"Erreur lors de la concaténation des DataFrames : {str(e)}")
-        combined_df = pd.DataFrame(columns=['employee__username', 'start', 'end', 'reason', 'type'])
-
-    logger.info(f"Nombre total d'entrées dans combined_df : {len(combined_df)}")
-    if not combined_df.empty:
-        logger.info(f"Aperçu de combined_df : \n{combined_df.to_string()}")
+    combined_df = pd.concat([conges_df, autorisations_df], ignore_index=True)
+    logger.info(f"Combined_df initial : {len(combined_df)} rows")
+    logger.info(f"Échantillon de combined_df : \n{combined_df.head().to_string()}")
 
     # Analyser les tendances
     analysis_results = analyze_leave_trends(combined_df)
 
+    # Graphiques
+    monthly_trends = analysis_results['monthly_trends']
+    employee_clusters = analysis_results['employee_clusters']
+
+    if monthly_trends:
+        months = list(monthly_trends.keys())
+        counts = list(monthly_trends.values())
+        monthly_fig = px.bar(
+            x=months,
+            y=counts,
+            labels={'x': 'Mois', 'y': 'Nombre de congés/autorisations'},
+            title="Tendances Mensuelles",
+            color=counts,
+            color_continuous_scale='Viridis'
+        )
+        monthly_fig.update_layout(xaxis={'tickmode': 'array', 'tickvals': list(range(1, 13)), 'ticktext': ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc']})
+        monthly_chart = monthly_fig.to_html(full_html=False)
+    else:
+        monthly_chart = "<p>Aucune donnée disponible pour les tendances mensuelles.</p>"
+
+    if employee_clusters and len(employee_clusters) > 1:
+        employee_months = combined_df.pivot_table(
+            index='employee__username',
+            columns='month',
+            values='type',
+            aggfunc='count',
+            fill_value=0
+        )
+        employee_months['cluster'] = employee_months.index.map(employee_clusters)
+        employee_months['total_leaves'] = employee_months.drop('cluster', axis=1).sum(axis=1)
+
+        cluster_fig = px.scatter(
+            employee_months,
+            x=employee_months.index,
+            y='total_leaves',
+            color='cluster',
+            labels={'x': 'Employé', 'y': 'Nombre total', 'color': 'Cluster'},
+            title="Clusters d'Employés",
+            hover_data={'cluster': True}
+        )
+        cluster_fig.update_layout(xaxis={'tickangle': 45})
+        cluster_chart = cluster_fig.to_html(full_html=False)
+    else:
+        cluster_chart = "<p>Pas assez de données pour générer des clusters.</p>"
+
     context = {
         'total_leaves': len(combined_df),
-        'monthly_trends': analysis_results['monthly_trends'],
-        'employee_clusters': analysis_results['employee_clusters'],
+        'monthly_trends': monthly_trends,
+        'employee_clusters': employee_clusters,
+        'monthly_chart': monthly_chart,
+        'cluster_chart': cluster_chart,
     }
     return render(request, 'ITservBack/leave_analysis.html', context)
 
+def analyze_leave_trends(combined_df):
+    if combined_df.empty:
+        logger.warning("Aucun congé ou autorisation trouvé pour l'analyse.")
+        return {'monthly_trends': {}, 'employee_clusters': {}}
+
+    # Convertir les dates
+    combined_df['start'] = pd.to_datetime(combined_df['start'], utc=True, errors='coerce')
+    combined_df['end'] = pd.to_datetime(combined_df['end'], utc=True, errors='coerce')
+    logger.info(f"Après conversion, combined_df : \n{combined_df.head().to_string()}")
+
+    # Filtrer les lignes invalides
+    combined_df = combined_df.dropna(subset=['start'])
+    logger.info(f"Après dropna, combined_df : {len(combined_df)} rows")
+
+    if combined_df.empty or combined_df['start'].isna().all():
+        logger.warning("Aucune donnée valide pour l'analyse après conversion et filtrage.")
+        return {'monthly_trends': {}, 'employee_clusters': {}}
+
+    # Extraire le mois
+    combined_df['month'] = combined_df['start'].dt.month
+    logger.info(f"Après ajout de 'month', colonnes : {combined_df.columns.tolist()}")
+    logger.info(f"Échantillon avec 'month' : \n{combined_df.head().to_string()}")
+
+    # Tendances mensuelles
+    monthly_counts = combined_df.groupby('month').size().to_dict()
+
+    # Clustering
+    unique_employees = combined_df['employee__username'].nunique()
+    employee_clusters = {}
+    if unique_employees > 1:
+        employee_months = combined_df.pivot_table(
+            index='employee__username',
+            columns='month',
+            values='type',
+            aggfunc='count',
+            fill_value=0
+        )
+        kmeans = KMeans(n_clusters=min(3, len(employee_months)), random_state=42)
+        clusters = kmeans.fit_predict(employee_months)
+        employee_clusters = dict(zip(employee_months.index, clusters))
+
+    return {
+        'monthly_trends': monthly_counts,
+        'employee_clusters': employee_clusters
+    }
+
+
+import logging
+from datetime import datetime, timedelta
+from calendar import monthrange
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render, redirect
+from django.utils import timezone
+from ortools.sat.python import cp_model
+from .models import Conge, Profil, TypeConge, User
+
+# Configuration du logger
+logger = logging.getLogger(__name__)
 
 @login_required
 def leave_planning_view(request):
+
     logger.info("Entrée dans leave_planning_view")
-    logger.info(f"Utilisateur authentifié : {request.user.is_authenticated}")
+
+    # Vérifier si l'utilisateur est authentifié
     if not request.user.is_authenticated:
         logger.error("Utilisateur non authentifié, redirection vers login")
         return redirect('login')
 
-    logger.info(f"Utilisateur : {request.user.username}")
+    # Vérifier le rôle de l'utilisateur
     try:
         profil = Profil.objects.get(user=request.user)
         logger.info(f"Profil trouvé : {profil.poste}")
@@ -1649,37 +1729,12 @@ def leave_planning_view(request):
         messages.error(request, "Profil non trouvé.")
         return redirect('employee')
 
+    # Définir les dates par défaut (période de 60 jours à partir d'aujourd'hui)
     start_date = timezone.now().date()
-    end_date = start_date + timedelta(days=29)
+    end_date = start_date + timedelta(days=60)
 
-    if request.method == 'POST':
-        logger.info("Traitement de la requête POST")
-        start_date = request.POST.get('start_date')
-        end_date = request.POST.get('end_date')
-        try:
-            if not start_date or not end_date:
-                raise ValueError("Les dates de début et de fin sont requises.")
-            start_date = timezone.datetime.strptime(start_date, '%Y-%m-%d').date()
-            end_date = timezone.datetime.strptime(end_date, '%Y-%m-%d').date()
-            if start_date > end_date:
-                raise ValueError("La date de fin doit être postérieure à la date de début.")
-            if start_date < timezone.now().date():
-                raise ValueError("La date de début ne peut pas être dans le passé.")
-
-            logger.info("Lancement de la génération du planning")
-            task = generate_leave_planning.delay(start_date=start_date.strftime('%Y-%m-%d'),
-                                               end_date=end_date.strftime('%Y-%m-%d'))
-            logger.info(f"Tâche lancée avec succès. ID : {task.id}")
-            messages.success(request, f"Tâche de génération du planning lancée. ID de la tâche : {task.id}")
-        except ValueError as e:
-            logger.error(f"Erreur de validation des dates : {str(e)}")
-            messages.error(request, str(e))
-        except Exception as e:
-            logger.error(f"Erreur lors de la génération du planning : {str(e)}")
-            messages.error(request, f"Erreur : {str(e)}")
-        return redirect(f"{request.path}?start_date={start_date}&end_date={end_date}")
-
-    if 'start_date' in request.GET:
+    # Si des dates sont passées via GET, les utiliser
+    if 'start_date' in request.GET and 'end_date' in request.GET:
         try:
             start_date = timezone.datetime.strptime(request.GET.get('start_date'), '%Y-%m-%d').date()
             end_date = timezone.datetime.strptime(request.GET.get('end_date'), '%Y-%m-%d').date()
@@ -1690,160 +1745,233 @@ def leave_planning_view(request):
             messages.error(request, "Format de date invalide. Utilisez AAAA-MM-JJ.")
             return redirect('leave_planning')
 
+    logger.info(f"Période sélectionnée : {start_date} à {end_date}")
+
+    # Liste des jours pour la période
     planning_days = [(start_date + timedelta(days=i)) for i in range((end_date - start_date).days + 1)]
     first_day = datetime(start_date.year, start_date.month, 1)
     num_days = monthrange(start_date.year, start_date.month)[1]
     last_day = first_day + timedelta(days=num_days - 1)
-    first_weekday = first_day.weekday()
 
+    # Récupérer toutes les demandes de congé en attente
+    pending_leaves = Conge.objects.filter(status='En attente').select_related('employee', 'type_conge')
+    logger.info(f"Nombre de demandes de congé en attente : {pending_leaves.count()}")
+
+    # Optimisation avec OR-Tools
+    if pending_leaves.exists():
+        # Créer le modèle de programmation par contraintes
+        model = cp_model.CpModel()
+
+        # Variables : une variable binaire par demande de congé (1 si acceptée, 0 sinon)
+        leave_vars = {}
+        for leave in pending_leaves:
+            leave_vars[leave.id] = model.NewBoolVar(f'leave_{leave.id}')
+
+        # Déterminer la période totale couverte par toutes les demandes
+        all_dates = set()
+        for leave in pending_leaves:
+            current_date = leave.start_date
+            while current_date <= leave.end_date:
+                all_dates.add(current_date)
+                current_date += timedelta(days=1)
+        all_dates = sorted(list(all_dates))
+
+        # Contrainte : un seul employé en congé par jour
+        for date in all_dates:
+            # Liste des demandes qui incluent cette date
+            leaves_on_date = []
+            for leave in pending_leaves:
+                if leave.start_date <= date <= leave.end_date:
+                    leaves_on_date.append(leave_vars[leave.id])
+            # Contrainte : somme des variables <= 1
+            model.Add(sum(leaves_on_date) <= 1)
+
+        # Objectif : maximiser le nombre de demandes acceptées
+        model.Maximize(sum(leave_vars.values()))
+
+        # Résoudre le modèle
+        solver = cp_model.CpSolver()
+        status = solver.Solve(model)
+
+        if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
+            logger.info("Solution optimale trouvée par OR-Tools")
+            # Mettre à jour les statuts des demandes
+            for leave in pending_leaves:
+                if solver.Value(leave_vars[leave.id]) == 1:
+                    leave.status = 'approved'
+                    logger.info(f"Demande {leave.id} approuvée : {leave.employee.username}, {leave.start_date} - {leave.end_date}")
+                else:
+                    leave.status = 'Rejeté'
+                    logger.info(f"Demande {leave.id} rejetée : {leave.employee.username}, {leave.start_date} - {leave.end_date}")
+                leave.save()
+        else:
+            logger.warning("Aucune solution optimale trouvée par OR-Tools")
+            messages.error(request, "Impossible d'optimiser les congés. Veuillez contacter un administrateur.")
+
+    # Récupérer les congés approuvés ou en attente dans la période affichée
     conges = Conge.objects.filter(
-        status='planned',
+        status__in=['approved',],
         start_date__lte=end_date,
         end_date__gte=start_date
-    ).select_related('employee')
+    ).select_related('employee', 'type_conge')
+    logger.info(f"Nombre de congés trouvés pour la période : {conges.count()}")
+    for conge in conges:
+        logger.info(f"Congé : {conge.employee.username}, {conge.start_date} - {conge.end_date}, Statut: {conge.status}")
 
+    # Préparer les congés avec les couleurs des employés
     employees = User.objects.filter(profil__poste='EMPLOYE').order_by('username')
     employee_colors = {}
     colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5', '#9B59B6', '#3498DB', '#E74C3C', '#2ECC71']
     for idx, emp in enumerate(employees):
         employee_colors[emp.id] = colors[idx % len(colors)]
 
-    days = []
-    for day in range(1, num_days + 1):
-        current_date = datetime(start_date.year, start_date.month, day).date()
-        if current_date < start_date or current_date > end_date:
-            days.append({
-                'day': day,
-                'date': current_date,
-                'employees_on_leave': []
-            })
+    leaves = []
+    for conge in conges:
+        if not conge.employee or not conge.type_conge:
+            logger.warning(f"Congé invalide : ID {conge.id}, Employee: {conge.employee}, Type: {conge.type_conge}")
             continue
+        leaves.append({
+            'employee': conge.employee,
+            'employee_color': employee_colors.get(conge.employee.id, '#000000'),
+            'start_date': conge.start_date,
+            'end_date': conge.end_date,
+            'type_conge': conge.type_conge,
+        })
+        logger.info(f"Congé ajouté à leaves : {conge.employee.username}, {conge.start_date} - {conge.end_date}, Statut: {conge.status}")
 
-        employees_on_leave = []
-        for conge in conges:
-            if conge.start_date <= current_date <= conge.end_date:
-                employees_on_leave.append({
-                    'username': conge.employee.username,
-                    'color': employee_colors[conge.employee.id]
-                })
-        days.append({
-            'day': day,
-            'date': current_date,
-            'employees_on_leave': employees_on_leave
+    # Calculer les dates occupées
+    occupied_dates = set()
+    for leave in leaves:
+        if not leave['start_date'] or not leave['end_date']:
+            logger.warning(f"Congé avec dates invalides : {leave}")
+            continue
+        if leave['end_date'] < leave['start_date']:
+            logger.warning(f"Congé avec end_date avant start_date : {leave}")
+            continue
+        current_date = leave['start_date']
+        while current_date <= leave['end_date']:
+            occupied_dates.add(current_date.strftime('%Y-%m-%d'))
+            current_date += timedelta(days=1)
+    logger.info(f"Dates occupées : {occupied_dates}")
+
+    # Convertir occupied_dates en liste pour JavaScript
+    occupied_dates_list = list(occupied_dates)
+
+    # Préparer les employés avec leurs couleurs pour la légende
+    employees_with_colors = []
+    for emp in employees:
+        employees_with_colors.append({
+            'username': emp.username,
+            'color': employee_colors[emp.id]
         })
 
-    calendar_grid = []
-    current_day = 1
-    for week in range(6):
-        week_row = []
-        for day in range(7):
-            if (week == 0 and day < first_weekday) or current_day > num_days:
-                week_row.append(None)
-            else:
-                for entry in days:
-                    if entry['day'] == current_day:
-                        week_row.append(entry)
-                        current_day += 1
-                        break
-        calendar_grid.append(week_row)
+    # Calculer les dates pour la navigation entre les mois
+    prev_month = first_day - timedelta(days=1)  # Aller au dernier jour du mois précédent
+    prev_month_start = prev_month.replace(day=1)
+    prev_month_end = prev_month.replace(day=monthrange(prev_month.year, prev_month.month)[1])
 
+    next_month = (first_day + timedelta(days=32)).replace(day=1)  # Aller au premier jour du mois suivant
+    next_month_start = next_month
+    next_month_end = next_month.replace(day=monthrange(next_month.year, next_month.month)[1])
+
+    logger.info(f"Navigation - Précédent : {prev_month_start} à {prev_month_end}")
+    logger.info(f"Navigation - Suivant : {next_month_start} à {next_month_end}")
+
+    # Récupérer les types de congé pour le formulaire
+    types_conge = TypeConge.objects.filter(flag_active=True)
+
+    # Préparer le contexte pour le template
     context = {
-        'start_date': start_date,
-        'end_date': end_date,
-        'calendar_grid': calendar_grid,
+        'planning_days': planning_days,
+        'leaves': leaves,
+        'occupied_dates': occupied_dates_list,
         'month_name': first_day.strftime('%B %Y'),
-        'weekdays': ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
-        'employee_colors': employee_colors,
-        'employees': employees,
+        'employees_with_colors': employees_with_colors,
+        'types_conge': types_conge,
+        'prev_month_start': prev_month_start,
+        'prev_month_end': prev_month_end,
+        'next_month_start': next_month_start,
+        'next_month_end': next_month_end,
     }
+
+    logger.info("Rendu du template leave_planning.html")
     return render(request, 'ITservBack/leave_planning.html', context)
+@login_required
+def submit_leave_from_planning(request):
+    if request.method == 'POST':
+        form = LeaveRequestForm(request.POST)
+        if form.is_valid():
+            try:
+                start_date = form.cleaned_data['start_date']
+                end_date = form.cleaned_data['end_date']
+                type_conge = form.cleaned_data['type_conge']
+                reason = form.cleaned_data['reason']
 
-def test_leave_planning(request):
-    # Définir une période fixe pour le test (par exemple, avril 2025)
-    start_date = datetime(2025, 4, 1).date()
-    end_date = datetime(2025, 4, 30).date()
+                # Vérifier les chevauchements avec les congés existants
+                overlapping_leaves = Conge.objects.filter(
+                    status__in=['Approuvé', 'En attente'],
+                    employee__profil__poste='EMPLOYE',
+                    start_date__lte=end_date,
+                    end_date__gte=start_date
+                ).exclude(employee=request.user)
 
-    # Générer le planning (de manière synchrone pour simplifier)
-    try:
-        result = generate_leave_planning(start_date=start_date.strftime('%Y-%m-%d'),
-                                       end_date=end_date.strftime('%Y-%m-%d'))
-        if result['status'] != 'success':
-            return HttpResponse(f"Erreur lors de la génération : {result['message']}", status=500)
-    except Exception as e:
-        return HttpResponse(f"Erreur : {str(e)}", status=500)
+                if overlapping_leaves.exists():
+                    overlapping_leave = overlapping_leaves.first()
+                    error_message = (
+                        f"Les dates demandées ({start_date} au {end_date}) chevauchent un congé existant de "
+                        f"{overlapping_leave.employee.username} (du {overlapping_leave.start_date} au "
+                        f"{overlapping_leave.end_date}). Veuillez choisir d'autres dates."
+                    )
+                    # Check if the request is AJAX by inspecting the X-Requested-With header
+                    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                        return JsonResponse({'success': False, 'errors': error_message})
+                    messages.error(request, error_message)
+                    return redirect('leave_planning')
 
-    # Récupérer les congés planifiés
-    conges = Conge.objects.filter(
-        status='planned',
-        start_date__lte=end_date,
-        end_date__gte=start_date
-    ).select_related('employee')
+                # Créer la demande de congé
+                leave = Conge(
+                    employee=request.user,
+                    type_conge=type_conge,
+                    start_date=start_date,
+                    end_date=end_date,
+                    reason=reason,
+                    status='En attente'
+                )
+                leave.save()
 
-    # Préparer les données du calendrier
-    planning_days = [(start_date + timedelta(days=i)) for i in range((end_date - start_date).days + 1)]
-    first_day = datetime(start_date.year, start_date.month, 1)
-    num_days = monthrange(start_date.year, start_date.month)[1]
-    last_day = first_day + timedelta(days=num_days - 1)
-    first_weekday = first_day.weekday()  # 0 = Lundi, 6 = Dimanche
+                # Notification pour l'utilisateur
+                Notification.objects.create(
+                    user=request.user,
+                    message=f"Nouvelle demande de congé soumise du {start_date} au {end_date}."
+                )
 
-    # Créer une liste des employés pour la légende
-    employees = User.objects.filter(profil__poste='EMPLOYE').order_by('username')
-    employee_colors = {}
-    colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#D4A5A5', '#9B59B6', '#3498DB', '#E74C3C', '#2ECC71']
-    for idx, emp in enumerate(employees):
-        employee_colors[emp.id] = colors[idx % len(colors)]
+                # Notification pour les Responsables RH
+                responsables_rh = Profil.objects.filter(poste='ResponsableRH')
+                for profil in responsables_rh:
+                    Notification.objects.create(
+                        user=profil.user,
+                        message=f"Nouvelle demande de congé de {request.user.username} du {start_date} au {end_date}."
+                    )
 
-    # Créer une liste de jours avec les congés
-    days = []
-    for day in range(1, num_days + 1):
-        current_date = datetime(start_date.year, start_date.month, day).date()
-        if current_date < start_date or current_date > end_date:
-            days.append({
-                'day': day,
-                'date': current_date,
-                'employees_on_leave': []
-            })
-            continue
+                # Check if the request is AJAX by inspecting the X-Requested-With header
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return JsonResponse({'success': True, 'message': "Demande de congé soumise avec succès !"})
+                messages.success(request, "Demande de congé soumise avec succès !")
+                return redirect('leave_planning')
 
-        employees_on_leave = []
-        for conge in conges:
-            if conge.start_date <= current_date <= conge.end_date:
-                employees_on_leave.append({
-                    'username': conge.employee.username,
-                    'color': employee_colors[conge.employee.id]
-                })
-        days.append({
-            'day': day,
-            'date': current_date,
-            'employees_on_leave': employees_on_leave
-        })
-
-    # Créer une grille pour le calendrier
-    calendar_grid = []
-    current_day = 1
-    for week in range(6):
-        week_row = []
-        for day in range(7):
-            if (week == 0 and day < first_weekday) or current_day > num_days:
-                week_row.append(None)
-            else:
-                for entry in days:
-                    if entry['day'] == current_day:
-                        week_row.append(entry)
-                        current_day += 1
-                        break
-        calendar_grid.append(week_row)
-
-    context = {
-        'start_date': start_date,
-        'end_date': end_date,
-        'calendar_grid': calendar_grid,
-        'month_name': first_day.strftime('%B %Y'),
-        'weekdays': ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
-        'employee_colors': employee_colors,
-        'employees': employees,
-    }
-    return render(request, 'ITservBack/test_leave_planning.html', context)
+            except Exception as e:
+                logger.error(f"Erreur lors de la soumission de la demande de congé : {str(e)}")
+                # Check if the request is AJAX by inspecting the X-Requested-With header
+                if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                    return JsonResponse({'success': False, 'errors': f"Erreur : {str(e)}"})
+                messages.error(request, f"Erreur lors de la soumission de la demande : {str(e)}")
+        else:
+            logger.warning(f"Erreur de validation du formulaire : {form.errors}")
+            # Check if the request is AJAX by inspecting the X-Requested-With header
+            if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                return JsonResponse({'success': False, 'errors': str(form.errors)})
+            messages.error(request, "Erreur dans le formulaire. Veuillez vérifier les champs.")
+    return redirect('leave_planning')
 def leave_events(request):
     start_date = request.GET.get('start_date', timezone.now().date())
     end_date = request.GET.get('end_date', (timezone.now().date() + timedelta(days=29)))
@@ -1875,3 +2003,5 @@ def leave_events(request):
             'borderColor': employee_colors[conge.employee.id],
         })
     return JsonResponse(events, safe=False)
+
+# views.py
