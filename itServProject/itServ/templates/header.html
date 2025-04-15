@@ -22,7 +22,7 @@
         <h1 class="sitename">itserv</h1>
       </a>
 
-      <nav id="navmenu" class="navmenu">
+      <nav id="navmenu" class="navmenu justify-content-center">
         <ul>
           {% if is_home %}
             <li><a href="{% url 'home' %}" class="active">Home<br></a></li>
@@ -30,10 +30,12 @@
             <li><a href="#services">Services</a></li>
             <li><a href="#departments">Departments</a></li>
             <li><a href="#doctors">Doctors</a></li>
-            <li class="dropdown"><a href="#"><span>Dropdown</span> <i class="bi bi-chevron-down toggle-dropdown"></i></a>
+            <li class="dropdown">
+              <a href="#"><span>Dropdown</span> <i class="bi bi-chevron-down toggle-dropdown"></i></a>
               <ul>
                 <li><a href="#">Dropdown 1</a></li>
-                <li class="dropdown"><a href="#"><span>Deep Dropdown</span> <i class="bi bi-chevron-down toggle-dropdown"></i></a>
+                <li class="dropdown">
+                  <a href="#"><span>Deep Dropdown</span> <i class="bi bi-chevron-down toggle-dropdown"></i></a>
                   <ul>
                     <li><a href="#">Deep Dropdown 1</a></li>
                     <li><a href="#">Deep Dropdown 2</a></li>
@@ -53,12 +55,16 @@
               {% if poste == 'admin' %}
                 <li><a href="{% url 'admin_dashboard' %}">Admin Panel</a></li>
               {% elif poste == 'EMPLOYE' %}
-                <!-- <li><a href="{% url 'employee' %}">Employee Dashboard</a></li> -->
+           <li><a href="{% url 'responsablerh_dashboard' %}"> <i class="bi bi-speedometer2 me-2 "></i> Tableau de bord</a></li>
+                <li><a href="{% url 'leave_analysis' %}" class="{% if request.path == '/responsablerh/leave-analysis/' %}active{% endif %}"> <i class="bi bi-graph-up me-2"></i> Analyse des congés</a></li>
+                <li><a href="{% url 'leave_planning' %}">Génération du planning</a></li>
               {% elif poste == 'ResponsableRH' %}
-                <li><a href="{% url 'responsablerh_dashboard' %}">PLANING</a></li>
+                <li><a href="{% url 'responsablerh_dashboard' %}">Tableau de bord</a></li>
+                <li><a href="{% url 'leave_analysis' %}" class="{% if request.path == '/responsablerh/leave-analysis/' %}active{% endif %}"><i class="bi bi-graph-up me-2"></i>Analyse des congés</a></li>
+                <li><a href="{% url 'leave_planning' %}">Génération du planning</a></li>
               {% endif %}
 
-              <!-- Notification Icon -->
+              <!-- Notification Icon (pour tous les utilisateurs authentifiés) -->
               <li class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle" href="#" id="notificationDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                   <i class="bi bi-bell"></i>
@@ -92,9 +98,8 @@
           {% if poste == 'admin' %}
             <a class="cta-btn d-none d-sm-block" href="{% url 'admin_dashboard' %}">Admin Dashboard</a>
           {% elif poste == 'EMPLOYE' %}
-            <!-- <a class="cta-btn d-none d-sm-block" href="{% url 'employee' %}">Employee Dashboard</a> -->
           {% elif poste == 'ResponsableRH' %}
-            <a class="cta-btn d-none d-sm-block" href="{% url 'responsablerh_dashboard' %}">AJOUTER EMPLOYÉ</a>
+            <a class="cta-btn d-none d-sm-block" href="{% url 'responsablerh_dashboard' %}">Ajouter employé</a>
           {% endif %}
           <a class="cta-btn d-none d-sm-block" href="{% url 'logout' %}">Logout</a>
         {% else %}
@@ -107,7 +112,34 @@
 
 <style>
   .dropdown-item.unread {
-      background-color: #f8d7da; /* Light red background for unread notifications */
-      font-weight: bold;
+    background-color: #f8d7da; /* Fond rouge clair pour les notifications non lues */
+    font-weight: bold;
+  }
+  /* Ajuster l'alignement des éléments dans l'en-tête */
+  .navmenu ul {
+    display: flex;
+    align-items: center;
+  }
+  .navmenu .nav-item {
+    margin-left: 10px;
+  }
+  .navmenu .nav-link {
+    color: #333;
+    font-weight: 500;
+  }
+  .navmenu .nav-link.active {
+    color: #007bff;
+    font-weight: bold;
+  }
+  .cta-btn {
+    margin-left: 10px;
+    padding: 8px 16px;
+    background-color: #007bff;
+    color: white;
+    border-radius: 5px;
+    text-decoration: none;
+  }
+  .cta-btn:hover {
+    background-color: #0056b3;
   }
 </style>

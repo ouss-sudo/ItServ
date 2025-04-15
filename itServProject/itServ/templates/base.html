@@ -15,8 +15,7 @@
   <link href="https://fonts.googleapis.com" rel="preconnect">
   <link href="https://fonts.gstatic.com" rel="preconnect" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,100;0,300;0,400;0,500;0,700;0,900;1,100;1,300;1,400;1,500;1,700;1,900&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&family=Raleway:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap" rel="stylesheet">
-
-      <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,500" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,500" rel="stylesheet">
 
   <!-- Vendor CSS Files -->
   <link href="{% static 'assets/vendor/bootstrap/css/bootstrap.min.css' %}" rel="stylesheet">
@@ -26,114 +25,74 @@
   <link href="{% static 'assets/vendor/glightbox/css/glightbox.min.css' %}" rel="stylesheet">
   <link href="{% static 'assets/vendor/swiper/swiper-bundle.min.css' %}" rel="stylesheet">
 
-  <!-- Main CSS File-->
+  <!-- Main CSS File -->
   <link href="{% static 'assets/css/main.css' %}" rel="stylesheet">
-
-
 </head>
 
 <body>
-
   {% include "header.html" %}
 
   <main>
-
+    {% block contentleave_planing %}{% endblock %}
     {% block content %}{% endblock %}
-    {% block contentemploye %} {% endblock %}
-    {% block contentRH %} {% endblock %}
-    {% block contenteresetpassword %} {% endblock %}
-    {% block contentresetconfirm %} {% endblock %}
-    {% block contentleave_request %} {% endblock %}
-{% block contentleave_list %}{% endblock %}
-{% block contentpassword %}{% endblock %}
+    {% block contentemploye %}{% endblock %}
+    {% block contentRH %}{% endblock %}
+    {% block contenteresetpassword %}{% endblock %}
+    {% block contentresetconfirm %}{% endblock %}
+    {% block contentleave_request %}{% endblock %}
+    {% block contentleave_list %}{% endblock %}
+    {% block contentpassword %}{% endblock %}
     {% block contentcalender %}{% endblock %}
-
-
-
-
-
-    {% block signup %}    {% endblock %}
-
+    {% block signup %}{% endblock %}
   </main>
 
   {% include "footer.html" %}
 
   <!-- Fichiers JS -->
   <script src="{% static 'assets/js/bootstrap.bundle.min.js' %}"></script>
-<!-- Scroll Top -->
-<a href="#" id="scroll-top" class="scroll-top d-flex align-items-center justify-content-center"><i class="bi bi-arrow-up-short"></i></a>
+  <!-- Scroll Top -->
+  <a href="#" id="scroll-top" class="scroll-top d-flex align-items-center justify-content-center"><i class="bi bi-arrow-up-short"></i></a>
 
-<!-- Preloader -->
-<div id="preloader"></div>
+  <!-- Preloader -->
+  <div id="preloader"></div>
 
-<!-- Fichiers JS (section finale) -->
-<script src="{% static 'assets/vendor/bootstrap/js/bootstrap.bundle.min.js' %}"></script>
-<script src="{% static 'assets/vendor/aos/aos.js' %}"></script>
-<script src="{% static 'assets/vendor/glightbox/js/glightbox.min.js' %}"></script>
-<script src="{% static 'assets/vendor/purecounter/purecounter_vanilla.js' %}"></script>
-<script src="{% static 'assets/vendor/swiper/swiper-bundle.min.js' %}"></script>
-<script src="{% static 'assets/vendor/php-email-form/validate.js' %}"></script>
-<script src="{% static 'assets/js/main.js' %}"></script>
-{% if user.is_authenticated %}
-<script>
-  document.addEventListener('DOMContentLoaded', function() {
-    const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
-    const wsUrl = `${wsScheme}://${window.location.host}/ws/notifications/`;
-    const ws = new WebSocket(wsUrl);
+  <!-- Fichiers JS (section finale) -->
+  <script src="{% static 'assets/vendor/bootstrap/js/bootstrap.bundle.min.js' %}"></script>
+  <script src="{% static 'assets/vendor/aos/aos.js' %}"></script>
+  <script src="{% static 'assets/vendor/glightbox/js/glightbox.min.js' %}"></script>
+  <script src="{% static 'assets/vendor/purecounter/purecounter_vanilla.js' %}"></script>
+  <script src="{% static 'assets/vendor/swiper/swiper-bundle.min.js' %}"></script>
+  <script src="{% static 'assets/vendor/php-email-form/validate.js' %}"></script>
+  <script src="{% static 'assets/js/main.js' %}"></script>
 
-    ws.onopen = function(event) {
-      console.log("WebSocket connection opened");
-    };
+  {% if user.is_authenticated %}
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
+      const wsUrl = `${wsScheme}://${window.location.host}/ws/notifications/`;
+      const ws = new WebSocket(wsUrl);
 
-    ws.onmessage = function(event) {
-      const data = JSON.parse(event.data);
-      const message = data.message;
+      ws.onopen = function(event) {
+        console.log("WebSocket connection opened");
+      };
 
-      // Add the new notification to the dropdown
-      const notificationList = document.getElementById('notification-list');
-      const newNotification = document.createElement('li');
-      newNotification.innerHTML = `
-        <a class="dropdown-item unread" href="#" data-notification-id="${Date.now()}">
-          ${message} <br>
-          <small>${new Date().toLocaleString()}</small>
-        </a>
-      `;
-      notificationList.insertBefore(newNotification, notificationList.firstChild);
+      ws.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        const message = data.message;
 
-      // Update notification count via server
-      fetch('/get-unread-count/', {
-        method: 'GET',
-        headers: {
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-      })
-      .then(response => response.json())
-      .then(data => {
-        if (data.unread_count !== undefined) {
-          document.getElementById('notification-count').textContent = data.unread_count;
-        }
-      })
-      .catch(error => console.error('Error fetching unread count:', error));
+        // Add the new notification to the dropdown
+        const notificationList = document.getElementById('notification-list');
+        const newNotification = document.createElement('li');
+        newNotification.innerHTML = `
+          <a class="dropdown-item unread" href="#" data-notification-id="${data.notification_id || Date.now()}">
+            ${message} <br>
+            <small>${new Date().toLocaleString()}</small>
+          </a>
+        `;
+        notificationList.insertBefore(newNotification, notificationList.firstChild);
 
-      alert(`New Notification: ${message}`);
-    };
-
-    ws.onclose = function(event) {
-      console.log("WebSocket connection closed", event);
-    };
-
-    ws.onerror = function(error) {
-      console.error("WebSocket error:", error);
-    };
-
-    // Handle marking notifications as read
-    document.querySelectorAll('.dropdown-item').forEach(item => {
-      item.addEventListener('click', function(event) {
-        event.preventDefault();
-        const notificationId = this.getAttribute('data-notification-id');
-        const url = `{% url 'mark_notification_read' 0 %}`.replace('0', notificationId);
-
-        fetch(url, {
+        // Update notification count via server
+        fetch('/get-unread-count/', {
           method: 'GET',
           headers: {
             'X-Requested-With': 'XMLHttpRequest',
@@ -141,122 +100,193 @@
         })
         .then(response => response.json())
         .then(data => {
-          if (data.success) {
-            this.classList.remove('unread');
-            if (data.unread_count !== undefined) {
-              document.getElementById('notification-count').textContent = data.unread_count;
-            }
-          } else {
-            alert(data.message || 'Error marking notification as read.');
+          if (data.unread_count !== undefined) {
+            document.getElementById('notification-count').textContent = data.unread_count;
           }
         })
-        .catch(error => {
-          console.error('Error:', error);
-          alert('An error occurred while marking the notification as read.');
-        });
-      });
+        .catch(error => console.error('Error fetching unread count:', error));
+      };
+
+      ws.onclose = function(event) {
+        console.log("WebSocket connection closed", event);
+      };
+
+      ws.onerror = function(error) {
+        console.error("WebSocket error:", error);
+      };
     });
-  });
-</script>
-{% endif %}
-<!-- Main JS File -->
-{% block extra_js %}
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-  const notificationCount = document.querySelector('#notification-count');
-  const notificationList = document.querySelector('#notification-list');
-  let socket;
+  </script>
+  {% endif %}
 
-  // Vérifier si l'utilisateur est authentifié avant de lancer WebSocket
+  <!-- Main JS File -->
+  {% block extra_js %}
+  <style>
+    #notification-list {
+      max-height: 300px; /* Hauteur pour afficher ~5 notifications */
+      overflow-y: auto; /* Activer le défilement vertical */
+      padding: 0;
+      margin: 0;
+      list-style: none;
+    }
+    #notification-list li {
+      border-bottom: 1px solid #eee;
+    }
+    #notification-list li:last-child {
+      border-bottom: none;
+    }
+    #notification-list a {
+      display: block;
+      padding: 10px;
+      color: #333;
+      text-decoration: none;
+    }
+    #notification-list a.unread {
+      background-color: #f8f9fa;
+      font-weight: 500;
+    }
+    #notification-list a:hover {
+      background-color: #e9ecef;
+    }
+    #notification-list small {
+      color: #6c757d;
+    }
+    #notification-count {
+      display: inline-block;
+      min-width: 20px;
+      padding: 2px 6px;
+      font-size: 12px;
+      font-weight: bold;
+      color: white;
+      text-align: center;
+      background-color: #dc3545;
+      border-radius: 10px;
+    }
+  </style>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const notificationCount = document.querySelector('#notification-count');
+      const notificationList = document.querySelector('#notification-list');
+      let socket;
 
-
-  function connectWebSocket() {
-    socket = new WebSocket('ws://' + window.location.host + '/ws/notifications/');
-
-    socket.onopen = function() {
-      console.log('WebSocket connection established');
-    };
-
-    socket.onmessage = function(event) {
-      const data = JSON.parse(event.data);
-      console.log('Received:', data);
-
-      if (data.type === 'initial_count') {
-        updateNotificationCount(data.unread_count);
-      } else if (data.type === 'notification') {
-        addNotification(data.message, data.notification_id);
-        if (data.unread_count !== undefined) {
+      // Charger les notifications initiales
+      function loadInitialNotifications() {
+        fetch('/get-notifications/', {
+          method: 'GET',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+        })
+        .then(response => response.json())
+        .then(data => {
+          notificationList.innerHTML = ''; // Vider la liste
+          if (data.notifications.length === 0) {
+            notificationList.innerHTML = '<li><a class="dropdown-item" href="#">Aucune notification</a></li>';
+          } else {
+            data.notifications.forEach(notification => {
+              addNotification(notification.message, notification.id, notification.is_read);
+            });
+          }
           updateNotificationCount(data.unread_count);
-        }
+        })
+        .catch(error => console.error('Error loading notifications:', error));
       }
-    };
 
-    socket.onclose = function() {
-      console.log('WebSocket closed, reconnecting...');
-      setTimeout(connectWebSocket, 2000);
-    };
-  }
+      // Connexion WebSocket
+      function connectWebSocket() {
+        socket = new WebSocket('ws://' + window.location.host + '/ws/notifications/');
 
-  function updateNotificationCount(count) {
-    notificationCount.textContent = count;
-    notificationCount.style.display = count > 0 ? 'inline-block' : 'none';
-  }
+        socket.onopen = function() {
+          console.log('WebSocket connection established');
+        };
 
-  function addNotification(message, notificationId) {
-    // Supprimer "Aucune notification" si présent
-    const noNotifItem = notificationList.querySelector('a[href="#"]');
-    if (noNotifItem && noNotifItem.textContent === 'Aucune notification') {
-      noNotifItem.parentElement.remove();
-    }
+        socket.onmessage = function(event) {
+          const data = JSON.parse(event.data);
+          console.log('Received:', data);
 
-    // Ajouter la nouvelle notification en haut
-    const notificationItem = document.createElement('li');
-    notificationItem.innerHTML = `
-      <a class="dropdown-item unread" href="#" data-notification-id="${notificationId}" onclick="markAsRead(event, ${notificationId})">
-        ${message} <br>
-        <small>${new Date().toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</small>
-      </a>
-    `;
-    notificationList.insertBefore(notificationItem, notificationList.firstChild);
+          if (data.type === 'initial_count') {
+            updateNotificationCount(data.unread_count);
+          } else if (data.type === 'notification') {
+            addNotification(data.message, data.notification_id, false);
+            if (data.unread_count !== undefined) {
+              updateNotificationCount(data.unread_count);
+            }
+          }
+        };
 
-    // Limiter à 5 notifications
-    const items = notificationList.getElementsByTagName('li');
-    while (items.length > 5) {
-      items[items.length - 1].remove();
-    }
-  }
+        socket.onclose = function() {
+          console.log('WebSocket closed, reconnecting...');
+          setTimeout(connectWebSocket, 2000);
+        };
 
-  window.markAsRead = function(event, notificationId) {
-    event.preventDefault();
-    fetch(`/mark-notification-read/${notificationId}/`, {
-      method: 'POST',
-      headers: {
-        'X-Requested-With': 'XMLHttpRequest',
-        'X-CSRFToken': getCsrfToken()
+        socket.onerror = function(error) {
+          console.error('WebSocket error:', error);
+        };
       }
-    })
-    .then(response => response.json())
-    .then(data => {
-      if (data.success) {
-        updateNotificationCount(data.unread_count);
-        const item = notificationList.querySelector(`[data-notification-id="${notificationId}"]`);
-        if (item) {
-          item.classList.remove('unread');
-          item.removeAttribute('onclick'); // Désactiver le clic après lecture
-        }
-        if (notificationList.children.length === 0) {
-          notificationList.innerHTML = '<li><a class="dropdown-item" href="#">Aucune notification</a></li>';
-        }
-      }
-    })
-    .catch(error => console.error('Error:', error));
-  };
 
-  function getCsrfToken() {
-    return document.querySelector('[name=csrfmiddlewaretoken]').value;
-  }
-});
-</script>
-{% endblock %}
+      function updateNotificationCount(count) {
+        notificationCount.textContent = count;
+        notificationCount.style.display = count > 0 ? 'inline-block' : 'none';
+      }
+
+      function addNotification(message, notificationId, isRead) {
+        // Supprimer "Aucune notification" si présent
+        const noNotifItem = notificationList.querySelector('a[href="#"]');
+        if (noNotifItem && noNotifItem.textContent === 'Aucune notification') {
+          noNotifItem.parentElement.remove();
+        }
+
+        // Ajouter la nouvelle notification en haut
+        const notificationItem = document.createElement('li');
+        notificationItem.innerHTML = `
+          <a class="dropdown-item ${isRead ? '' : 'unread'}" href="#" data-notification-id="${notificationId}" onclick="markAsRead(event, ${notificationId})">
+            ${message} <br>
+            <small>${new Date().toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</small>
+          </a>
+        `;
+        notificationList.insertBefore(notificationItem, notificationList.firstChild);
+
+        // Faire défiler vers le haut pour montrer la nouvelle notification
+        notificationList.scrollTop = 0;
+      }
+
+      window.markAsRead = function(event, notificationId) {
+        event.preventDefault();
+        fetch(`/mark-notification-read/${notificationId}/`, {
+          method: 'POST',
+          headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': getCsrfToken()
+          }
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            updateNotificationCount(data.unread_count);
+            const item = notificationList.querySelector(`[data-notification-id="${notificationId}"]`);
+            if (item) {
+              item.classList.remove('unread');
+              item.removeAttribute('onclick'); // Désactiver le clic après lecture
+            }
+            if (notificationList.children.length === 0) {
+              notificationList.innerHTML = '<li><a class="dropdown-item" href="#">Aucune notification</a></li>';
+            }
+          }
+        })
+        .catch(error => console.error('Error marking notification as read:', error));
+      };
+
+      function getCsrfToken() {
+        const token = document.querySelector('[name=csrfmiddlewaretoken]');
+        return token ? token.value : '';
+      }
+
+      // Initialiser
+      if (notificationList) {
+        loadInitialNotifications();
+        connectWebSocket();
+      }
+    });
+  </script>
+  {% endblock %}
 </body>
 </html>

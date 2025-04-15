@@ -1,0 +1,27 @@
+    {% extends "base.html" %}
+    {% load static %}
+     {% block content %}
+     <div class="container">
+         <h2>Analyse des sentiments des congés/absences</h2>
+         <table class="table">
+             <thead>
+                 <tr>
+                     <th>Raison</th>
+                     <th>Sentiment</th>
+                 </tr>
+             </thead>
+             <tbody>
+                 {% for item in sentiments %}
+                 <tr>
+                     <td>{{ item.reason }}</td>
+                     <td>{{ item.sentiment }}</td>
+                 </tr>
+                 {% empty %}
+                 <tr>
+                     <td colspan="2">Aucune analyse disponible.</td>
+                 </tr>
+                 {% endfor %}
+             </tbody>
+         </table>
+     </div>
+     {% endblock %}

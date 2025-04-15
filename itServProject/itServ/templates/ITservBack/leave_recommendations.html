@@ -1,0 +1,15 @@
+    {% extends "base.html" %}
+    {% load static %}
+     {% block content %}
+     <div class="container">
+         <h2>Recommandations de congés</h2>
+         <p>Voici les meilleures périodes pour planifier vos congés :</p>
+         <ul>
+             {% for date in dates %}
+             <li>{{ date }}</li>
+             {% empty %}
+             <li>Aucune recommandation disponible.</li>
+             {% endfor %}
+         </ul>
+     </div>
+     {% endblock %}

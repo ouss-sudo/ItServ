@@ -44,5 +44,9 @@ urlpatterns = [
     path('responsablerh/leave-planning/', views.leave_planning_view, name='leave_planning'),
     path('leave-events/', views.leave_events, name='leave_events'),
     path('submit-leave-from-planning/', views.submit_leave_from_planning,name='submit_leave_from_planning'),
+    path('leave_recommendations/', views.leave_recommendations,name='leave_recommendations'),
+    path('pointage_anomalies/', views.pointage_anomalies, name='pointage_anomalies'),
+    path('leave_sentiments/', views.leave_sentiment_analysis, name='leave_sentiments'),
+
 
               ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -4,11 +4,15 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from .models import Autorisation
 from sklearn.cluster import KMeans
+import json
+import redis
+
 from celery.exceptions import OperationalError
 from django.contrib import messages
 from django.views import View
 from .forms import LeaveRequestForm  # Add this import
-
+from .tasks import optimize_leaves
+from ortools.constraint_solver import pywrapcp as cp_model
 from django.utils.decorators import method_decorator
 from django.http import HttpResponse
 import pandas as pd
@@ -114,7 +118,7 @@ def employee(request):
     last_day = first_day + timedelta(days=num_days - 1)
     first_weekday = first_day.weekday()
 
-    pointages = Pointage.objects.filter(
+    pointages_calendar = Pointage.objects.filter(
         employe=request.user,
         date__range=[first_day, last_day]
     ).values('date', 'heure_entree')
@@ -141,7 +145,7 @@ def employee(request):
             'absent': False
         })
 
-    for pointage in pointages:
+    for pointage in pointages_calendar:
         for entry in days:
             if entry['date'] == pointage['date'] and pointage['heure_entree']:
                 entry['worked'] = True
@@ -238,6 +242,60 @@ def employee(request):
     if end_date_to:
         absence_requests = absence_requests.filter(end_date__lte=end_date_to)
 
+    # Pagination
+    items_per_page = 5  # Nombre d'éléments par page
+
+    # Pagination pour les congés (leave_requests)
+    leave_paginator = Paginator(leave_requests, items_per_page)
+    leave_page_number = request.GET.get('leave_page')
+    try:
+        leave_requests_page = leave_paginator.page(leave_page_number)
+    except PageNotAnInteger:
+        leave_requests_page = leave_paginator.page(1)
+    except EmptyPage:
+        leave_requests_page = leave_paginator.page(leave_paginator.num_pages)
+
+    # Pagination pour les absences (absence_requests)
+    absence_paginator = Paginator(absence_requests, items_per_page)
+    absence_page_number = request.GET.get('absence_page')
+    try:
+        absence_requests_page = absence_paginator.page(absence_page_number)
+    except PageNotAnInteger:
+        absence_requests_page = absence_paginator.page(1)
+    except EmptyPage:
+        absence_requests_page = absence_paginator.page(absence_paginator.num_pages)
+
+    # Pagination pour les pointages (pointages)
+    pointage_paginator = Paginator(pointages, items_per_page)
+    pointage_page_number = request.GET.get('pointage_page')
+    try:
+        pointages_page = pointage_paginator.page(pointage_page_number)
+    except PageNotAnInteger:
+        pointages_page = pointage_paginator.page(1)
+    except EmptyPage:
+        pointages_page = pointage_paginator.page(pointage_paginator.num_pages)
+
+    # Pagination pour les autorisations (autorisations)
+    autorisation_paginator = Paginator(autorisations, items_per_page)
+    autorisation_page_number = request.GET.get('autorisation_page')
+    try:
+        autorisations_page = autorisation_paginator.page(autorisation_page_number)
+    except PageNotAnInteger:
+        autorisations_page = autorisation_paginator.page(1)
+    except EmptyPage:
+        autorisations_page = autorisation_paginator.page(autorisation_paginator.num_pages)
+
+    # Pagination pour l'historique de connexion (login_histories)
+    login_histories = UserLoginHistory.objects.filter(user=request.user).order_by('-login_time')
+    login_paginator = Paginator(login_histories, items_per_page)
+    login_page_number = request.GET.get('login_page')
+    try:
+        login_histories_page = login_paginator.page(login_page_number)
+    except PageNotAnInteger:
+        login_histories_page = login_paginator.page(1)
+    except EmptyPage:
+        login_histories_page = login_paginator.page(login_paginator.num_pages)
+
     # Gestion du pointage (entrée et sortie)
     if request.method == 'POST' and 'check_in' in request.POST:
         try:
@@ -285,7 +343,8 @@ def employee(request):
         except Exception as e:
             messages.error(request, f"Erreur lors du pointage de sortie : {str(e)}")
             logger.error(f"Erreur lors du pointage de sortie pour {request.user.username} : {str(e)}")
-        return redirect('employee')
+        return redirect(f"{reverse('employee')}?tab=pointage")
+
 
     # Soumission d'une nouvelle demande d'absence
     if request.method == 'POST' and 'type_absence' in request.POST and 'start_date' in request.POST:
@@ -294,7 +353,8 @@ def employee(request):
         end_date = request.POST.get('end_date')
         reason = request.POST.get('reason')
         image = request.FILES.get('image')
-        logger.info(f"Requête POST reçue : type_absence={type_absence_id}, start_date={start_date}, end_date={end_date}, reason={reason}, image={image}")
+        logger.info(
+            f"Requête POST reçue : type_absence={type_absence_id}, start_date={start_date}, end_date={end_date}, reason={reason}, image={image}")
         if not start_date or not end_date or not reason:
             messages.error(request, "Veuillez remplir tous les champs obligatoires.")
             logger.warning("Champs manquants pour la demande d'absence.")
@@ -334,7 +394,7 @@ def employee(request):
 
                 messages.success(request, "Demande d'absence soumise avec succès !")
                 logger.info(f"Demande d'absence créée avec succès : ID={absence.id}")
-                return redirect('employee')
+                return redirect(f"{reverse('employee')}?tab=absences")
             except ValueError as e:
                 messages.error(request, "Format de date invalide. Utilisez AAAA-MM-JJ.")
                 logger.error(f"Erreur de format de date : {str(e)}")
@@ -348,82 +408,82 @@ def employee(request):
                 messages.error(request, f"Erreur lors de la soumission de la demande : {str(e)}")
                 logger.error(f"Erreur lors de la soumission de la demande d'absence : {str(e)}")
 
-            # Logique pour soumettre une nouvelle demande de congé
-        if request.method == 'POST' and 'type_conge' in request.POST and 'start_date' in request.POST:
-            type_conge_id = request.POST.get('type_conge')
-            start_date = request.POST.get('start_date')
-            end_date = request.POST.get('end_date')
-            reason = request.POST.get('reason')
+    # Logique pour soumettre une nouvelle demande de congé
+    if request.method == 'POST' and 'type_conge' in request.POST and 'start_date' in request.POST:
+        type_conge_id = request.POST.get('type_conge')
+        start_date = request.POST.get('start_date')
+        end_date = request.POST.get('end_date')
+        reason = request.POST.get('reason')
 
-            if not start_date or not end_date or not reason:
-                messages.error(request, "Veuillez remplir tous les champs obligatoires.")
-            else:
-                try:
-                    start_date = timezone.datetime.strptime(start_date, '%Y-%m-%d').date()
-                    end_date = timezone.datetime.strptime(end_date, '%Y-%m-%d').date()
-                    if start_date > end_date:
-                        raise ValidationError("La date de fin doit être postérieure à la date de début.")
-                    if start_date < timezone.now().date():
-                        raise ValidationError("La date de début ne peut pas être dans le passé.")
+        if not start_date or not end_date or not reason:
+            messages.error(request, "Veuillez remplir tous les champs obligatoires.")
+        else:
+            try:
+                start_date = timezone.datetime.strptime(start_date, '%Y-%m-%d').date()
+                end_date = timezone.datetime.strptime(end_date, '%Y-%m-%d').date()
+                if start_date > end_date:
+                    raise ValidationError("La date de fin doit être postérieure à la date de début.")
+                if start_date < timezone.now().date():
+                    raise ValidationError("La date de début ne peut pas être dans le passé.")
 
-                    # Vérifier les chevauchements avec les congés existants (approuvés ou planifiés) d'autres employés
-                    overlapping_leaves = Conge.objects.filter(
-                        status__in=['approved', 'planned'],  # Vérifier les congés approuvés ou planifiés
-                        employee__profil__poste='EMPLOYE',  # Seulement les employés
-                        start_date__lte=end_date,  # Le congé existant commence avant la fin de la demande
-                        end_date__gte=start_date  # Le congé existant se termine après le début de la demande
-                    ).exclude(employee=request.user)  # Exclure l'utilisateur actuel
+                # Vérifier les chevauchements avec les congés existants (approuvés ou planifiés) d'autres employés
+                overlapping_leaves = Conge.objects.filter(
+                    status__in=['approved', 'planned'],  # Vérifier les congés approuvés ou planifiés
+                    employee__profil__poste='EMPLOYE',  # Seulement les employés
+                    start_date__lte=end_date,  # Le congé existant commence avant la fin de la demande
+                    end_date__gte=start_date  # Le congé existant se termine après le début de la demande
+                ).exclude(employee=request.user)  # Exclure l'utilisateur actuel
 
-                    if overlapping_leaves.exists():
-                        # Si un chevauchement est trouvé, afficher un message d'erreur
-                        overlapping_leave = overlapping_leaves.first()
-                        messages.error(
-                            request,
-                            f"Les dates demandées ({start_date} au {end_date}) chevauchent un congé existant de "
-                            f"{overlapping_leave.employee.username} (du {overlapping_leave.start_date} au "
-                            f"{overlapping_leave.end_date}). Veuillez choisir d'autres dates."
-                        )
-                        logger.warning(
-                            f"Chevauchement détecté pour {request.user.username} : demande ({start_date} au {end_date}) "
-                            f"chevauche le congé de {overlapping_leave.employee.username} "
-                            f"({overlapping_leave.start_date} au {overlapping_leave.end_date})"
-                        )
-                    else:
-                        # Si aucun chevauchement, créer la demande de congé
-                        leave = Conge(
-                            employee=request.user,
-                            type_conge_id=type_conge_id,
-                            start_date=start_date,
-                            end_date=end_date,
-                            reason=reason,
-                        )
-                        leave.save()
+                if overlapping_leaves.exists():
+                    # Si un chevauchement est trouvé, afficher un message d'erreur
+                    overlapping_leave = overlapping_leaves.first()
+                    messages.error(
+                        request,
+                        f"Les dates demandées ({start_date} au {end_date}) chevauchent un congé existant de "
+                        f"{overlapping_leave.employee.username} (du {overlapping_leave.start_date} au "
+                        f"{overlapping_leave.end_date}). Veuillez choisir d'autres dates."
+                    )
+                    logger.warning(
+                        f"Chevauchement détecté pour {request.user.username} : demande ({start_date} au {end_date}) "
+                        f"chevauche le congé de {overlapping_leave.employee.username} "
+                        f"({overlapping_leave.start_date} au {overlapping_leave.end_date})"
+                    )
+                else:
+                    # Si aucun chevauchement, créer la demande de congé
+                    leave = Conge(
+                        employee=request.user,
+                        type_conge_id=type_conge_id,
+                        start_date=start_date,
+                        end_date=end_date,
+                        reason=reason,
+                    )
+                    leave.save()
 
-                        # Notification pour l'utilisateur
+                    # Notification pour l'utilisateur
+                    Notification.objects.create(
+                        user=request.user,
+                        message=f"Nouvelle demande de congé soumise du {start_date} au {end_date}."
+                    )
+
+                    # Notification pour les Responsables RH
+                    responsables_rh = Profil.objects.filter(poste='ResponsableRH')
+                    for profil in responsables_rh:
                         Notification.objects.create(
-                            user=request.user,
-                            message=f"Nouvelle demande de congé soumise du {start_date} au {end_date}."
+                            user=profil.user,
+                            message=f"Nouvelle demande de congé de {request.user.username} du {start_date} au {end_date}."
                         )
 
-                        # Notification pour les Responsables RH
-                        responsables_rh = Profil.objects.filter(poste='ResponsableRH')
-                        for profil in responsables_rh:
-                            Notification.objects.create(
-                                user=profil.user,
-                                message=f"Nouvelle demande de congé de {request.user.username} du {start_date} au {end_date}."
-                            )
+                    messages.success(request, "Demande de congé soumise avec succès !")
+                    logger.info(f"Demande de congé créée avec succès : ID={leave.id}")
+                    return redirect(f"{reverse('employee')}?tab=conge")
 
-                        messages.success(request, "Demande de congé soumise avec succès !")
-                        logger.info(f"Demande de congé créée avec succès : ID={leave.id}")
-                        return redirect('employee')
-
-                except ValueError:
-                    messages.error(request, "Format de date invalide. Utilisez AAAA-MM-JJ.")
-                except ValidationError as e:
-                    messages.error(request, str(e))
-                except Exception as e:
-                    messages.error(request, f"Erreur lors de la soumission de la demande : {str(e)}")
-                    logger.error(f"Erreur lors de la soumission de la demande de congé : {str(e)}")
+            except ValueError:
+                messages.error(request, "Format de date invalide. Utilisez AAAA-MM-JJ.")
+            except ValidationError as e:
+                messages.error(request, str(e))
+            except Exception as e:
+                messages.error(request, f"Erreur lors de la soumission de la demande : {str(e)}")
+                logger.error(f"Erreur lors de la soumission de la demande de congé : {str(e)}")
 
     # Logique pour ajouter un nouveau type de congé
     if request.method == 'POST' and 'new_type_conge' in request.POST:
@@ -434,7 +494,8 @@ def employee(request):
                 messages.success(request, "Nouveau type de congé ajouté avec succès !")
             except Exception as e:
                 messages.error(request, f"Erreur lors de l'ajout : {str(e)}")
-        return redirect('employee')
+        return redirect(f"{reverse('employee')}?tab=conge")
+
 
     # Logique pour ajouter un nouveau type d'absence
     if request.method == 'POST' and 'new_type_absence' in request.POST:
@@ -458,7 +519,7 @@ def employee(request):
         else:
             messages.error(request, "Vous n'êtes pas autorisé à ajouter un type d'absence.")
             logger.warning(f"Utilisateur non autorisé à ajouter un type d'absence : {request.user.username}")
-        return redirect('employee')
+        return redirect(f"{reverse('employee')}?tab=absences")
 
     # Récupérer les notifications
     notifications = request.user.notifications.all().order_by('-created_at')
@@ -471,22 +532,23 @@ def employee(request):
     context = {
         'poste': poste,
         'is_home': False,
-        'leave_requests': leave_requests,
-        'absence_requests': absence_requests,
-        'pointages': pointages,
+        'leave_requests': leave_requests_page,  # Utiliser l'objet paginé
+        'absence_requests': absence_requests_page,  # Utiliser l'objet paginé
+        'pointages': pointages_page,  # Utiliser l'objet paginé
         'types_conge': types_conge,
         'types_absence': types_absence,
         'status_choices': Conge._meta.get_field('status').choices,
-        'login_histories': UserLoginHistory.objects.filter(user=request.user).order_by('-login_time'),
+        'login_histories': login_histories_page,  # Utiliser l'objet paginé
         'unread_notifications_count': unread_notifications_count,
         'notifications': notifications,
         'type_conge_choices': TypeConge.objects.filter(flag_active=True).values_list('id', 'type'),
         'type_absence_choices': TypeAbsence.objects.filter(flag_active=True).values_list('id', 'type'),
-        'autorisations': autorisations,
+        'autorisations': autorisations_page,  # Utiliser l'objet paginé
         'start_date_from': start_date_from,
         'start_date_to': start_date_to,
     }
     return render(request, "ITservBack/employe_dashboard.html", context)
+
 def logout_view(request):  # Nouvelle vue pour la déconnexion
     auth_logout(request)  # Déconnecte l'utilisateur
     logger.info("Utilisateur déconnecté avec succès.")
@@ -1178,16 +1240,14 @@ def send_notification_to_user(user_id, message, notification_id):
 @require_POST
 def mark_notification_read(request, notification_id):
     try:
-        notification = Notification.objects.get(id=notification_id, user=request.user)
-        notification.is_read = True
-        notification.save()
-        unread_count = request.user.notifications.filter(is_read=False).count()
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return JsonResponse({
-                'success': True,
-                'message': 'Notification marked as read.',
-                'unread_count': unread_count
-            })
+        notifications = Notification.objects.filter(user=request.user, is_read=False)
+        count_before = notifications.count()
+        notifications.update(is_read=True)
+        return JsonResponse({
+            'success': True,
+            'unread_count': 0,
+            'message': f'{count_before} notifications marked as read.'
+        })
         messages.success(request, "Notification marked as read.")
     except Notification.DoesNotExist:
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
@@ -1454,28 +1514,76 @@ def submit_autorisation(request):
             end_datetime = datetime.strptime(end_datetime, '%Y-%m-%dT%H:%M')
         except ValueError:
             messages.error(request, "Format de date/heure invalide.")
+            logger.error(f"Format de date/heure invalide : start_datetime={start_datetime}, end_datetime={end_datetime}")
             return redirect('employee')
 
         if end_datetime <= start_datetime:
             messages.error(request, "La date de fin doit être postérieure à la date de début.")
+            logger.warning(f"Date de fin ({end_datetime}) antérieure ou égale à la date de début ({start_datetime})")
+            return redirect('employee')
+
+        # Vérifier les chevauchements avec les congés approuvés ou planifiés de tous les employés
+        overlapping_leaves = Conge.objects.filter(
+            status__in=['approved', 'planned'],
+            start_date__lte=end_datetime.date(),
+            end_date__gte=start_datetime.date()
+        )
+
+        if overlapping_leaves.exists():
+            overlapping_leave = overlapping_leaves.first()
+            error_message = (
+                f"Un employé ({overlapping_leave.employee.username}) est en congé du "
+                f"{overlapping_leave.start_date} au {overlapping_leave.end_date}. "
+                f"Les autorisations ne sont pas autorisées pendant cette période."
+            )
+            messages.error(request, error_message)
+            logger.warning(
+                f"Demande d'autorisation refusée pour {request.user.username} : chevauchement avec congé "
+                f"de {overlapping_leave.employee.username} "
+                f"({overlapping_leave.start_date} au {overlapping_leave.end_date})"
+            )
             return redirect('employee')
 
         duration = end_datetime - start_datetime
         duration_hours = duration.total_seconds() / 3600
 
-        Autorisation.objects.create(
-            employee=request.user,
-            start_datetime=start_datetime,
-            end_datetime=end_datetime,
-            description=description,
-            duration=f"{duration_hours:.2f} heure(s)",
-            status='en cours',
-            created_at=timezone.now()
-        )
-        messages.success(request, "Demande d'autorisation enregistrée avec succès.")
+        try:
+            autorisation = Autorisation.objects.create(
+                employee=request.user,
+                start_datetime=start_datetime,
+                end_datetime=end_datetime,
+                description=description,
+                duration=f"{duration_hours:.2f} heure(s)",
+                status='en cours',
+                created_at=timezone.now()
+            )
+            messages.success(request, "Demande d'autorisation enregistrée avec succès.")
+            logger.info(f"Autorisation créée avec succès : ID={autorisation.id}, pour {request.user.username}")
+
+            # Notification pour l'utilisateur
+            Notification.objects.create(
+                user=request.user,
+                message=f"Nouvelle demande d'autorisation soumise pour le {start_datetime.strftime('%Y-%m-%d %H:%M')}."
+            )
+
+            # Notification pour les Responsables RH
+            responsables_rh = Profil.objects.filter(poste='ResponsableRH')
+            for profil in responsables_rh:
+                Notification.objects.create(
+                    user=profil.user,
+                    message=f"Nouvelle demande d'autorisation de {request.user.username} pour le "
+                            f"{start_datetime.strftime('%Y-%m-%d %H:%M')}."
+                )
+
+        except Exception as e:
+            messages.error(request, f"Erreur lors de l'enregistrement de l'autorisation : {str(e)}")
+            logger.error(f"Erreur lors de la création de l'autorisation : {str(e)}")
+
         return redirect('employee')
 
     return redirect('employee')
+
+
 
 @login_required
 def edit_autorisation(request, id):
@@ -1693,18 +1801,7 @@ def analyze_leave_trends(combined_df):
     }
 
 
-import logging
-from datetime import datetime, timedelta
-from calendar import monthrange
-from django.contrib import messages
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import render, redirect
-from django.utils import timezone
-from ortools.sat.python import cp_model
-from .models import Conge, Profil, TypeConge, User
 
-# Configuration du logger
-logger = logging.getLogger(__name__)
 
 @login_required
 def leave_planning_view(request):
@@ -1756,6 +1853,12 @@ def leave_planning_view(request):
     # Récupérer toutes les demandes de congé en attente
     pending_leaves = Conge.objects.filter(status='En attente').select_related('employee', 'type_conge')
     logger.info(f"Nombre de demandes de congé en attente : {pending_leaves.count()}")
+    # Déclencher la tâche Celery pour optimiser les congés en attente
+    if pending_leaves.exists():
+        task = optimize_leaves.delay()
+        logger.info(f"Tâche Celery déclenchée pour l'optimisation des congés : Task ID {task.id}")
+        messages.info(request,
+                      "L'optimisation des congés est en cours. Veuillez rafraîchir la page dans quelques instants.")
 
     # Optimisation avec OR-Tools
     if pending_leaves.exists():
@@ -1982,7 +2085,7 @@ def leave_events(request):
         return JsonResponse({'error': 'Invalid date format'}, status=400)
 
     conges = Conge.objects.filter(
-        status='planned',
+        status='approved',
         start_date__lte=end_date,
         end_date__gte=start_date
     ).select_related('employee')
@@ -2003,5 +2106,42 @@ def leave_events(request):
             'borderColor': employee_colors[conge.employee.id],
         })
     return JsonResponse(events, safe=False)
+redis_client = redis.Redis(host='localhost', port=6379, db=0)
+@login_required
+def leave_recommendations(request):
+         recommendations = redis_client.get(f"leave_recommendation:{request.user.id}")
+         dates = json.loads(recommendations) if recommendations else []
+         return render(request, 'ITservBack/leave_recommendations.html', {'dates': dates})
 
-# views.py
+redis_client = redis.Redis(host='localhost', port=6379, db=0)
+@login_required
+def pointage_anomalies(request):
+         if request.user.profil.poste != 'ResponsableRH':
+             messages.error(request, "Accès non autorisé.")
+             return redirect('employee')
+
+         anomalies = [redis_client.lindex('pointage_anomalies', i).decode('utf-8')
+                      for i in range(redis_client.llen('pointage_anomalies'))]
+         return render(request, 'ITservBack/pointage_anomalies.html', {'anomalies': anomalies})
+
+
+redis_client = redis.Redis(host='localhost', port=6379, db=0)
+
+@login_required
+def leave_sentiment_analysis(request):
+         if request.user.profil.poste != 'ResponsableRH':
+             messages.error(request, "Accès non autorisé.")
+             return redirect('employee')
+
+         sentiments = []
+         for conge in Conge.objects.all():
+             sentiment = redis_client.hget('leave_sentiments', conge.id)
+             if sentiment:
+                 sentiments.append({'reason': conge.reason, 'sentiment': sentiment.decode('utf-8')})
+         for absence in Absence.objects.all():
+             sentiment = redis_client.hget('leave_sentiments', absence.id)
+             if sentiment:
+                 sentiments.append({'reason': absence.reason, 'sentiment': sentiment.decode('utf-8')})
+
+         return render(request, 'ITservBack/leave_sentiments.html', {'sentiments': sentiments})
+

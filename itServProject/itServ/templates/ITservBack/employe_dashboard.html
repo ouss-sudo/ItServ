@@ -1,56 +1,16 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}Employee Dashboard - ITserv{% endblock %}
+{% block title %}Tableau de bord - Employé - ITserv{% endblock %}
 
 {% block content %}
 <div class="container-fluid">
-    <div class="row justify-content-center">
-        <!-- Sidebar centrée -->
-        <div class="col-12 col-md-3 col-lg-2 sidebar mx-auto">
-            <div class="sidebar-logo mb-4">
-                <!-- <img src="{% static 'assets/img/logo.png' %}" alt="ITserv Logo" class="img-fluid"> -->
-            </div>
-            <ul class="nav flex-column">
-                <li class="nav-item">
-                    <a href="{% url 'employee' %}" class="nav-link {% if request.path == '/employee/' %}active{% endif %}">
-                        <i class="bi bi-speedometer2 me-2"></i> Tableau de bord
-                    </a>
-                </li>
-                        <li class="nav-item">
-        <a href="{% url 'leave_analysis' %}" class="nav-link {% if request.path == '/responsablerh/leave-analysis/' %}active{% endif %}">
-            <i class="bi bi-graph-up me-2"></i> Analyse des congés
-        </a>
-    </li>
-                <li class="nav-item">
-        <a href="{% url 'leave_analysis' %}" class="nav-link">Analyse des congés</a>
-    </li>
-    <li class="nav-item">
-        <a href="{% url 'leave_planning' %}" class="nav-link">Génération du planning</a>
-    </li>
-                <li class="nav-item">
-                <li class="nav-item">
-                    <a href="{% url 'employee' %}" class="nav-link {% if request.path == '/employee/' %}active{% endif %}">
-                        <i class="bi bi-file-earmark-text me-2"></i> Congés / Autorisations
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="{% url 'employee' %}" class="nav-link">
-                        <i class="bi bi-person me-2"></i> Demandes
-                    </a>
-                </li>
+    <div class="row">
+        <!-- Sidebar -->
 
-                <li class="nav-item">
-                    <a href="{% url 'employee' %}" class="nav-link">
-                        <i class="bi bi-clock-history me-2"></i> Historique
-                    </a>
-                </li>
-            </ul>
-        </div>
-
-        <!-- Contenu principal ajusté pour s'adapter autour de la sidebar centrée -->
-        <div class="col-12 col-md-9 col-lg-10 main-content offset-md-0 offset-lg-0">
-            <!-- Tabs pour Congé, Autorisation et Historique -->
+        <!-- Contenu principal -->
+        <div class="main-content">
+            <!-- Tabs pour Congé, Autorisation, Absences, Pointage, Historique -->
             <ul class="nav nav-tabs mb-3">
                 <li class="nav-item">
                     <a class="nav-link active" href="#conge" data-bs-toggle="tab">Congé</a>
@@ -62,17 +22,15 @@
                     <a class="nav-link" href="#absences" data-bs-toggle="tab">Absences</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="#pointage" data-bs-toggle="tab">pointage</a>
+                    <a class="nav-link" href="#pointage" data-bs-toggle="tab">Pointage</a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="#historique" data-bs-toggle="tab">Historique de connexion</a>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="#Planification des congés" data-bs-toggle="tab">Planification des congés</a>
-                </li>
             </ul>
 
             <div class="tab-content">
+                <!-- Onglet Congé -->
                 <div class="tab-pane fade show active" id="conge">
                     <!-- Carte pour le formulaire de demande de congé -->
                     <div class="card mb-4">
@@ -143,123 +101,94 @@
                     </div>
                 </div>
 
+                <!-- Onglet Autorisation -->
                 <div class="tab-pane fade" id="autorisation">
-                  <!--  {% include 'ITservBack/calendar.html' %} -->
-                                {% include 'autorisation_request.html' %}
+                    {% include 'autorisation_request.html' %}
+                </div>
 
-                     <div class="card-body">
-                            {% include 'ITservBack/ai_leave_planning.html' %}
-                         {% include 'ITservBack/employee_leave_calendar.html' %}
-
-
+                <!-- Onglet Absences -->
+                <div class="tab-pane fade" id="absences">
+                    <div class="card mb-4">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="card-title mb-0">Demande d'absence</h5>
                         </div>
+                        <div class="card-body">
+                            {% include 'absence_request.html' %}
+                        </div>
+                        <div class="card-body">
+                            {% include 'absence_list.html' %}
+                        </div>
+                    </div>
                 </div>
-<div class="tab-pane fade" id="pointage">
-    <!-- Formulaire pour le pointage -->
-<div class="card mb-4">
-    <div class="card-header">Pointage</div>
-    <div class="card-body">
-        <form method="post">
-            {% csrf_token %}
-            <div class="text-center">
-                <button type="submit" name="check_in" class="btn btn-success mb-2">Pointer l'entrée</button>
-                <button type="submit" name="check_out" class="btn btn-danger mb-2">Pointer la sortie</button>
-            </div>
-        </form>
-    </div>
-    <!-- Liste des pointages -->
-     <div class="card mb-4">
-        <div class="card-header">Importer les pointages via Excel</div>
-        <div class="card-body">
-            <form method="post" enctype="multipart/form-data">
-                {% csrf_token %}
-                <div class="mb-3">
-                    <label for="excel_file" class="form-label">Sélectionner un fichier Excel</label>
-                    <input type="file" class="form-control" id="excel_file" name="excel_file" accept=".xlsx, .xls" required>
-                </div>
-                <div class="text-end">
-                    <button type="submit" name="upload_pointage_excel" class="btn btn-primary">Importer</button>
-                </div>
-            </form>
-        </div>
-    </div>
-<div class="card mb-4">
-        <div class="card-header">Mes pointages</div>
-        <div class="card-body">
-            <div class="text-end mb-3">
-                <a href="{% url 'export_pointages' %}" class="btn btn-primary">Exporter en Excel</a>
-            </div>
-            <table class="table table-bordered">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Heure d'entrée</th>
-                        <th>Heure de sortie</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for pointage in pointages %}
-                    <tr>
-                        <td>{{ pointage.date }}</td>
-                        <td>{{ pointage.heure_entree|default:"Non pointé" }}</td>
-                        <td>{{ pointage.heure_sortie|default:"Non pointé" }}</td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="3">Aucun pointage enregistré</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-<!-- Liste des pointages -->
-<div class="card mb-4">
-    <div class="card-header">pointage</div>
-    <div class="card-body">
-        <table class="table table-bordered">
-            <thead>
-                <tr>
-                    <th>Date</th>
-                    <th>Heure d'entrée</th>
-                    <th>Heure de sortie</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for pointage in pointages %}
-                <tr>
-                    <td>{{ pointage.date }}</td>
-                    <td>{{ pointage.heure_entree|default:"Non pointé" }}</td>
-                    <td>{{ pointage.heure_sortie|default:"Non pointé" }}</td>
-                </tr>
-                {% empty %}
-                <tr>
-                    <td colspan="3">Aucun pointage enregistré</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-</div>
 
-    <div class="tab-pane fade" id="absences">
-    <div class="card mb-4">
-        <div class="card-header bg-primary text-white">
-            <h5 class="card-title mb-0">Demande d'absence</h5>
-        </div>
-     
-        <div class="card-body">
-            {% include 'absence_request.html' %}
-        </div>
-           <div class="card-body">
-            {% include 'absence_list.html' %}
-        </div>
-    </div>
-</div>
+                <!-- Onglet Pointage -->
+                <div class="tab-pane fade" id="pointage">
+                    <!-- Formulaire pour le pointage -->
+                    <div class="card mb-4">
+                        <div class="card-header">Pointage</div>
+                        <div class="card-body">
+                            <form method="post">
+                                {% csrf_token %}
+                                <div class="text-center">
+                                    <button type="submit" name="check_in" class="btn btn-success mb-2">Pointer l'entrée</button>
+                                    <button type="submit" name="check_out" class="btn btn-danger mb-2">Pointer la sortie</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Formulaire pour importer les pointages via Excel -->
+                    <div class="card mb-4">
+                        <div class="card-header">Importer les pointages via Excel</div>
+                        <div class="card-body">
+                            <form method="post" enctype="multipart/form-data">
+                                {% csrf_token %}
+                                <div class="mb-3">
+                                    <label for="excel_file" class="form-label">Sélectionner un fichier Excel</label>
+                                    <input type="file" class="form-control" id="excel_file" name="excel_file" accept=".xlsx, .xls" required>
+                                </div>
+                                <div class="text-end">
+                                    <button type="submit" name="upload_pointage_excel" class="btn btn-primary">Importer</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Liste des pointages -->
+                    <div class="card mb-4">
+                        <div class="card-header">Mes pointages</div>
+                        <div class="card-body">
+                            <div class="text-end mb-3">
+                                <a href="{% url 'export_pointages' %}" class="btn btn-primary">Exporter en Excel</a>
+                            </div>
+                            <table class="table table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Heure d'entrée</th>
+                                        <th>Heure de sortie</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for pointage in pointages %}
+                                        <tr>
+                                            <td>{{ pointage.date }}</td>
+                                            <td>{{ pointage.heure_entree|default:"Non pointé" }}</td>
+                                            <td>{{ pointage.heure_sortie|default:"Non pointé" }}</td>
+                                        </tr>
+                                    {% empty %}
+                                        <tr>
+                                            <td colspan="3">Aucun pointage enregistré</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Onglet Historique -->
                 <div class="tab-pane fade" id="historique">
-                    <!-- Carte pour l'historique de connexion -->
                     <div class="card">
                         <div class="card-header bg-primary text-white">
                             <h5 class="card-title mb-0">Historique de connexion</h5>
@@ -307,7 +236,9 @@
         min-height: 100vh;
         background-color: #2c3e50;
         color: white;
-        padding: 0;
+        padding: 20px 0;
+        position: sticky;
+        top: 0;
     }
     .sidebar-logo img {
         max-width: 100px;
@@ -317,6 +248,7 @@
         padding: 10px 15px;
         border-radius: 5px;
         margin-bottom: 5px;
+        transition: background-color 0.3s ease;
     }
     .nav-link:hover, .nav-link.active {
         background-color: #1abc9c;
@@ -329,6 +261,7 @@
     .main-content {
         padding: 20px;
         background-color: #f5f6fa;
+        min-height: 100vh;
     }
     .card {
         border-radius: 10px;
@@ -372,31 +305,36 @@
     }
     .nav-tabs .nav-link {
         color: #3498db;
+        transition: all 0.3s ease;
     }
-
-    /* Centrage de la sidebar */
-    .row.justify-content-center {
-        display: flex;
-        justify-content: center;
-    }
-    .sidebar.mx-auto {
-        margin: 0 auto;
-        max-width: 250px; /* Ajustez la largeur maximale selon vos besoins */
+    .nav-tabs .nav-link:hover {
+        background-color: #e9ecef;
     }
 
     /* Style pour l'en-tête de filtrage */
     .bg-dark-teal {
-        background-color: #1a3c50; /* Couleur bleu foncé */
+        background-color: #1a3c50;
         padding: 10px 15px;
     }
     .filter-input input {
-        max-width: 200px; /* Ajustez la largeur selon vos besoins */
+        max-width: 200px;
         border-radius: 5px;
     }
 
     /* Ajustement pour éviter les marges indésirables */
     .card-body {
         padding-bottom: 0;
+    }
+
+    /* Responsive Design */
+    @media (max-width: 767px) {
+        .sidebar {
+            min-height: auto;
+            position: relative;
+        }
+        .main-content {
+            padding: 10px;
+        }
     }
 </style>
 <script>
@@ -507,7 +445,7 @@
         updateUnreadCount();
     });
 
-    // Fonction pour filtrer la table (si nécessaire)
+    // Fonction pour filtrer la table
     function filterTable() {
         const input = document.getElementById('filterInput');
         const filter = input.value.toLowerCase();

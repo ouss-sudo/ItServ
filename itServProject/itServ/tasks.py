@@ -4,6 +4,11 @@ from celery import shared_task
 from django.utils import timezone
 from datetime import timedelta
 from .models import Conge
+import redis
+from itServ.models import Conge, User
+import json
+from sklearn.cluster import KMeans
+from ortools.constraint_solver import pywrapcp as cp_model
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +28,11 @@ def generate_leave_planning(self, start_date=None, end_date=None):
 
         # Supprimer les anciens congés planifiés pour éviter les doublons
         conges_to_delete = Conge.objects.filter(
-            status='planned',
+            status='approved',
             start_date__gte=start_date,
             end_date__lte=end_date
         )
-        logger.info(f"Congés à supprimer (statut 'planned') : {[(c.employee.username, c.start_date, c.end_date) for c in conges_to_delete]}")
+        logger.info(f"Congés à supprimer (statut 'approved') : {[(c.employee.username, c.start_date, c.end_date) for c in conges_to_delete]}")
         conges_to_delete.delete()
         logger.info("Anciens congés planifiés supprimés.")
 
@@ -41,3 +46,186 @@ def generate_leave_planning(self, start_date=None, end_date=None):
     except Exception as e:
         logger.error(f"Erreur dans generate_leave_planning : {str(e)}", exc_info=True)
         raise
+@shared_task
+def optimize_leaves():
+    """
+    Tâche Celery pour optimiser les demandes de congé en attente avec OR-Tools.
+    """
+    logger.info("Début de l'optimisation des congés avec OR-Tools via Celery")
+
+    # Récupérer toutes les demandes de congé en attente
+    pending_leaves = Conge.objects.filter(status='En attente').select_related('employee', 'type_conge')
+    logger.info(f"Nombre de demandes de congé en attente : {pending_leaves.count()}")
+
+    if not pending_leaves.exists():
+        logger.info("Aucune demande de congé en attente à optimiser.")
+        return "Aucune demande à optimiser."
+
+    # Créer le modèle de programmation par contraintes
+    model = cp_model.CpModel()
+
+    # Variables : une variable binaire par demande de congé (1 si acceptée, 0 sinon)
+    leave_vars = {}
+    for leave in pending_leaves:
+        leave_vars[leave.id] = model.NewBoolVar(f'leave_{leave.id}')
+
+    # Déterminer la période totale couverte par toutes les demandes
+    all_dates = set()
+    for leave in pending_leaves:
+        current_date = leave.start_date
+        while current_date <= leave.end_date:
+            all_dates.add(current_date)
+            current_date += timedelta(days=1)
+    all_dates = sorted(list(all_dates))
+
+    # Contrainte : un seul employé en congé par jour
+    for date in all_dates:
+        leaves_on_date = []
+        for leave in pending_leaves:
+            if leave.start_date <= date <= leave.end_date:
+                leaves_on_date.append(leave_vars[leave.id])
+        model.Add(sum(leaves_on_date) <= 1)
+
+    # Objectif : maximiser le nombre de demandes acceptées
+    model.Maximize(sum(leave_vars.values()))
+
+    # Résoudre le modèle
+    solver = cp_model.CpSolver()
+    status = solver.Solve(model)
+
+    if status == cp_model.OPTIMAL or status == cp_model.FEASIBLE:
+        logger.info("Solution optimale trouvée par OR-Tools")
+        for leave in pending_leaves:
+            if solver.Value(leave_vars[leave.id]) == 1:
+                leave.status = 'Approved'  # Uniformiser avec 'Approved'
+                logger.info(f"Demande {leave.id} approuvée : {leave.employee.username}, {leave.start_date} - {leave.end_date}")
+            else:
+                leave.status = 'Rejeté'
+                logger.info(f"Demande {leave.id} rejetée : {leave.employee.username}, {leave.start_date} - {leave.end_date}")
+            leave.save()
+        return "Optimisation terminée avec succès."
+    else:
+        logger.warning("Aucune solution optimale trouvée par OR-Tools")
+        return "Échec de l'optimisation."
+
+logger = logging.getLogger(__name__)
+redis_client = redis.Redis(host='localhost', port=6379, db=0)
+
+@shared_task
+def recommend_leave_dates():
+         logger.info("Calcul des recommandations de congés")
+         conges = Conge.objects.filter(status='approved').values(
+             'employee__id', 'start_date', 'end_date'
+         )
+         df = pd.DataFrame(conges)
+
+         if df.empty:
+             logger.warning("Aucun congé pour générer des recommandations")
+             return
+
+         # Créer une liste de dates futures
+         start_date = datetime.now().date()
+         end_date = start_date + timedelta(days=365)
+         dates = pd.date_range(start_date, end_date)
+         date_df = pd.DataFrame({'date': dates})
+         date_df['month'] = date_df['date'].dt.month
+         date_df['day_of_week'] = date_df['date'].dt.dayofweek
+         date_df['leave_count'] = 0
+
+         # Compter les congés par date
+         for _, row in df.iterrows():
+             current = row['start_date']
+             while current <= row['end_date']:
+                 date_df.loc[date_df['date'] == current, 'leave_count'] += 1
+                 current += timedelta(days=1)
+
+         # Clustering pour identifier les périodes optimales
+         X = date_df[['month', 'day_of_week', 'leave_count']]
+         kmeans = KMeans(n_clusters=5, random_state=42)
+         date_df['cluster'] = kmeans.fit_predict(X)
+
+         # Sélectionner les clusters avec peu de congés
+         optimal_dates = date_df[date_df['cluster'] == date_df.groupby('cluster')['leave_count'].mean().idxmin()]
+         optimal_dates = optimal_dates['date'].dt.strftime('%Y-%m-%d').tolist()
+
+         # Stocker pour chaque employé
+         for user in User.objects.filter(profil__poste='EMPLOYE'):
+             redis_client.set(f"leave_recommendation:{user.id}", json.dumps(optimal_dates[:5]))
+         logger.info("Recommandations stockées dans Redis")
+
+
+logger = logging.getLogger(__name__)
+redis_client = redis.Redis(host='localhost', port=6379, db=0)
+@shared_task
+def detect_pointage_anomalies():
+    logger.info("Analyse des anomalies de pointage")
+    pointages = Pointage.objects.filter(
+        date__gte=datetime.now().date() - timedelta(days=30)
+    ).values('employe__username', 'date', 'heure_entree', 'heure_sortie')
+
+    if not pointages:
+        logger.warning("Aucun pointage à analyser")
+        return
+
+    df = pd.DataFrame(pointages)
+    df['heure_entree'] = pd.to_datetime(df['heure_entree'].astype(str), format='%H:%M:%S', errors='coerce')
+    df['heure_sortie'] = pd.to_datetime(df['heure_sortie'].astype(str), format='%H:%M:%S', errors='coerce')
+    df['day_of_week'] = pd.to_datetime(df['date']).dt.dayofweek
+    df['entree_hour'] = df['heure_entree'].dt.hour + df['heure_entree'].dt.minute / 60
+    df['sortie_hour'] = df['heure_sortie'].dt.hour + df['heure_sortie'].dt.minute / 60
+    df['duration'] = (df['sortie_hour'] - df['entree_hour']).fillna(0)
+    df['employe_code'] = df['employe__username'].astype('category').cat.codes
+
+    features = ['entree_hour', 'sortie_hour', 'duration', 'day_of_week', 'employe_code']
+    X = df[features].fillna(0)
+
+    # Détection des anomalies
+    model = IsolationForest(contamination=0.1, random_state=42)
+    df['anomaly'] = model.fit_predict(X)
+    anomalies = df[df['anomaly'] == -1]
+
+    # Stocker et notifier
+    for idx, row in anomalies.iterrows():
+        message = f"Anomalie détectée pour {row['employe__username']} le {row['date']}: entrée {row['heure_entree']}, sortie {row['heure_sortie']}"
+        redis_client.lpush('pointage_anomalies', message)
+        Notification.objects.create(
+            user=User.objects.get(username=row['employe__username']),
+            message=message
+        )
+        # Notifier RH
+        for rh in Profil.objects.filter(poste='ResponsableRH'):
+            Notification.objects.create(user=rh.user, message=message)
+    logger.info(f"{len(anomalies)} anomalies détectées")
+redis_client = redis.Redis(host='localhost', port=6379, db=0)
+@shared_task
+def analyze_leave_reasons():
+    logger.info("Analyse des sentiments des raisons")
+    conges = Conge.objects.all().values('id', 'reason')
+    absences = Absence.objects.all().values('id', 'reason')
+    df = pd.concat([
+        pd.DataFrame(conges).assign(type='conge'),
+        pd.DataFrame(absences).assign(type='absence')
+    ])
+
+    if df['reason'].isna().all():
+        logger.warning("Aucune raison valide à analyser")
+        return
+
+    # Supposons un étiquetage initial (simulé ici, à remplacer par IA générative)
+    sample_data = {
+        'reason': ['repos familial', 'maladie', 'vacances', 'urgence personnelle'],
+        'sentiment': ['positif', 'négatif', 'positif', 'négatif']
+    }
+    sample_df = pd.DataFrame(sample_data)
+
+    # Entraîner un modèle
+    pipeline = make_pipeline(TfidfVectorizer(), LogisticRegression())
+    pipeline.fit(sample_df['reason'], sample_df['sentiment'])
+
+    # Prédire les sentiments
+    df['sentiment'] = pipeline.predict(df['reason'].fillna(''))
+
+    # Stocker dans Redis
+    for idx, row in df.iterrows():
+        redis_client.hset('leave_sentiments', row['id'], row['sentiment'])
+    logger.info("Sentiments stockés dans Redis")

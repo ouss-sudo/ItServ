@@ -1,0 +1,14 @@
+    {% extends "base.html" %}
+    {% load static %}
+     {% block content %}
+     <div class="container">
+         <h2>Anomalies de Pointage</h2>
+         <ul>
+             {% for anomaly in anomalies %}
+             <li>{{ anomaly }}</li>
+             {% empty %}
+             <li>Aucune anomalie détectée.</li>
+             {% endfor %}
+         </ul>
+     </div>
+     {% endblock %}
