@@ -10,6 +10,18 @@
 
         <!-- Contenu principal -->
         <div class="main-content">
+            <!-- Afficher les messages -->
+            {% if messages %}
+                <div class="mt-3">
+                    {% for message in messages %}
+                        <div class="alert {% if message.tags == 'success' %}alert-success{% elif message.tags == 'error' %}alert-danger{% elif message.tags == 'warning' %}alert-warning{% else %}alert-info{% endif %} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
             <!-- Tabs pour Congé, Autorisation, Absences, Pointage, Historique -->
             <ul class="nav nav-tabs mb-3">
                 <li class="nav-item">
@@ -121,18 +133,44 @@
                     </div>
                 </div>
 
-                <!-- Onglet Pointage -->
-                <div class="tab-pane fade" id="pointage">
+               <!-- Onglet Pointage -->
+                <div class="tab-pane fade {% if request.GET.tab == 'pointage' %}show active{% endif %}" id="pointage">
+                    <!-- Formulaire pour définir la localisation de la société (visible uniquement pour ResponsableRH ou superuser) -->
+                    {% if request.user.profil.poste == 'ResponsableRH' or request.user.is_superuser %}
+                    <div class="card mb-4">
+                        <div class="card-header">Définir la localisation de la société</div>
+                        <div class="card-body">
+                            <form method="post">
+                                {% csrf_token %}
+                                <div class="mb-3">
+                                    <label for="location_societe" class="form-label">Localisation de la société (Latitude, Longitude)</label>
+                                    <input type="text" class="form-control" id="location_societe" name="location_societe" placeholder="ex: 48.8566,2.3522" value="{% if societe %}{{ societe.location_societe }}{% endif %}" required>
+                                </div>
+                                <div class="text-end">
+                                    <button type="submit" name="update_location" class="btn btn-primary">Ajouter / Mettre à jour</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    {% else %}
+                        <div class="alert alert-info">
+                            La localisation de la société doit être définie par un Responsable RH ou un administrateur.
+                        </div>
+                    {% endif %}
+
                     <!-- Formulaire pour le pointage -->
                     <div class="card mb-4">
                         <div class="card-header">Pointage</div>
                         <div class="card-body">
-                            <form method="post">
+                            <form id="checkInForm" method="POST" action="{% url 'employee' %}">
                                 {% csrf_token %}
-                                <div class="text-center">
-                                    <button type="submit" name="check_in" class="btn btn-success mb-2">Pointer l'entrée</button>
-                                    <button type="submit" name="check_out" class="btn btn-danger mb-2">Pointer la sortie</button>
-                                </div>
+                                <input type="hidden" name="check_in" value="1">
+                                <button type="button" id="checkInButton" onclick="getLocationAndSubmit('checkInForm')">Pointer l'entrée</button>
+                            </form>
+                            <form id="checkOutForm" method="POST" action="{% url 'employee' %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="check_out" value="1">
+                                <button type="button" id="checkOutButton" onclick="getLocationAndSubmit('checkOutForm')">Pointer la sortie</button>
                             </form>
                         </div>
                     </div>
@@ -166,7 +204,10 @@
                                     <tr>
                                         <th>Date</th>
                                         <th>Heure d'entrée</th>
+                                        <th>Localisation d'entrée</th>
                                         <th>Heure de sortie</th>
+                                        <th>Localisation de sortie</th>
+                                        <th>État</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -174,11 +215,20 @@
                                         <tr>
                                             <td>{{ pointage.date }}</td>
                                             <td>{{ pointage.heure_entree|default:"Non pointé" }}</td>
+                                            <td>{{ pointage.latitude|default:"N/A" }}, {{ pointage.longitude|default:"N/A" }}</td>
                                             <td>{{ pointage.heure_sortie|default:"Non pointé" }}</td>
+                                            <td>{{ pointage.latitude|default:"N/A" }}, {{ pointage.longitude|default:"N/A" }}</td>
+                                            <td>
+                                                {% if pointage.est_valide %}
+                                                    Validé
+                                                {% else %}
+                                                    Refusé
+                                                {% endif %}
+                                            </td>
                                         </tr>
                                     {% empty %}
                                         <tr>
-                                            <td colspan="3">Aucun pointage enregistré</td>
+                                            <td colspan="6">Aucun pointage enregistré</td>
                                         </tr>
                                     {% endfor %}
                                 </tbody>
@@ -337,132 +387,49 @@
         }
     }
 </style>
+
+{% endblock %}
+{% block extra_js %}
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const userId = {{ request.user.id }}; // Get the user ID from the template context
-        const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
-        const wsUrl = `${wsScheme}://${window.location.host}/ws/notifications/${userId}/`;
-        const socket = new WebSocket(wsUrl);
+document.addEventListener('DOMContentLoaded', function() {
+    console.log("Script de géolocalisation chargé");
 
-        socket.onopen = function(event) {
-            console.log("WebSocket connection established for user " + userId);
-        };
+    function getLocationAndSubmit(formId) {
+        console.log("getLocationAndSubmit appelé pour : " + formId);
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    const form = document.getElementById(formId);
+                    const latInput = document.createElement('input');
+                    latInput.type = 'hidden';
+                    latInput.name = 'latitude';
+                    latInput.value = position.coords.latitude;
+                    form.appendChild(latInput);
 
-        socket.onmessage = function(event) {
-            const data = JSON.parse(event.data);
-            console.log("Received notification:", data);
+                    const lonInput = document.createElement('input');
+                    lonInput.type = 'hidden';
+                    lonInput.name = 'longitude';
+                    lonInput.value = position.coords.longitude;
+                    form.appendChild(lonInput);
 
-            // Update the notification list
-            const notificationList = document.getElementById('notification-list');
-            const newNotification = document.createElement('li');
-            newNotification.innerHTML = `
-                <a class="dropdown-item unread" href="#" data-notification-id="${data.notification_id}" onclick="markAsRead(event, ${data.notification_id})">
-                    ${data.message} <br>
-                    <small>${new Date().toLocaleString()}</small>
-                </a>
-            `;
-            notificationList.prepend(newNotification); // Add new notification at the top
-
-            // Update the unread count
-            updateUnreadCount();
-        };
-
-        socket.onclose = function(event) {
-            console.log("WebSocket connection closed:", event);
-        };
-
-        socket.onerror = function(error) {
-            console.error("WebSocket error:", error);
-            alert("Failed to connect to WebSocket. Please check the server configuration.");
-        };
-
-        // Function to fetch and update the unread notification count
-        function updateUnreadCount() {
-            fetch("{% url 'get_unread_count' %}", {
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
+                    form.submit();
+                },
+                function(error) {
+                    alert("Impossible de récupérer votre localisation : " + error.message);
                 }
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Failed to fetch unread count');
-                }
-                return response.json();
-            })
-            .then(data => {
-                const countElement = document.getElementById('unread-count');
-                if (countElement) {
-                    countElement.innerText = data.unread_count;
-                } else {
-                    console.error("Element with ID 'unread-count' not found");
-                }
-            })
-            .catch(error => console.error("Error fetching unread count:", error));
-        }
-
-        // Mark notification as read when clicked
-        function markAsRead(event, notificationId) {
-            event.preventDefault(); // Prevent default link behavior
-            fetch(`/mark-notification-read/${notificationId}/`, {
-                method: 'POST',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-CSRFToken': getCsrfToken()
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Update the UI to mark the notification as read
-                    const notificationItem = document.querySelector(`[data-notification-id="${notificationId}"]`);
-                    if (notificationItem) {
-                        notificationItem.classList.remove('unread');
-                    }
-                    updateUnreadCount();
-                }
-            })
-            .catch(error => console.error("Error marking notification as read:", error));
-        }
-
-        // Helper function to get CSRF token from cookies
-        function getCsrfToken() {
-            const name = 'csrftoken';
-            let cookieValue = null;
-            if (document.cookie && document.cookie !== '') {
-                const cookies = document.cookie.split(';');
-                for (let i = 0; i < cookies.length; i++) {
-                    const cookie = cookies[i].trim();
-                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                        break;
-                    }
-                }
-            }
-            return cookieValue;
-        }
-
-        // Initial load of unread count
-        updateUnreadCount();
-    });
-
-    // Fonction pour filtrer la table
-    function filterTable() {
-        const input = document.getElementById('filterInput');
-        const filter = input.value.toLowerCase();
-        const table = document.querySelector('.table');
-        const rows = table.getElementsByTagName('tr');
-
-        for (let i = 1; i < rows.length; i++) {
-            const cells = rows[i].getElementsByTagName('td');
-            let match = false;
-            for (let j = 0; j < cells.length; j++) {
-                if (cells[j].innerText.toLowerCase().indexOf(filter) > -1) {
-                    match = true;
-                    break;
-                }
-            }
-            rows[i].style.display = match ? '' : 'none';
+            );
+        } else {
+            alert("La géolocalisation n'est pas supportée par votre navigateur.");
         }
     }
+
+    // Attacher les événements aux boutons
+    document.getElementById('checkInButton').addEventListener('click', function() {
+        getLocationAndSubmit('checkInForm');
+    });
+    document.getElementById('checkOutButton').addEventListener('click', function() {
+        getLocationAndSubmit('checkOutForm');
+    });
+});
 </script>
 {% endblock %}

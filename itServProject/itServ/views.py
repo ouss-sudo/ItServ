@@ -2,11 +2,16 @@ from django.shortcuts import render, redirect,get_object_or_404
 from django.contrib.auth import login as auth_login, logout as auth_logout
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
-from .models import Autorisation
+from .models import Autorisation,Societe
 from sklearn.cluster import KMeans
 import json
-import redis
+from math import radians, sin, cos, sqrt, atan2
 
+from django.views.decorators.cache import never_cache
+from transformers import pipeline
+from django.contrib.auth.decorators import login_required
+import redis
+from django.urls import reverse
 from celery.exceptions import OperationalError
 from django.contrib import messages
 from django.views import View
@@ -33,7 +38,7 @@ from itServ.models import Notification, Profil
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
 from django.utils import timezone
-from itServ.models import Profil, Conge, Absence
+from itServ.models import Profil, Conge, Absence ,Societe
 from django.utils import timezone
 import logging
 from io import BytesIO
@@ -76,7 +81,6 @@ logger = logging.getLogger(__name__)
 def home(request):
     context = {'is_home': True}  # Indicateur pour la page d'accueil
     return render(request, "home.html", context)
-
 
 @login_required
 def employee(request):
@@ -296,9 +300,43 @@ def employee(request):
     except EmptyPage:
         login_histories_page = login_paginator.page(login_paginator.num_pages)
 
-    # Gestion du pointage (entrée et sortie)
+    try:
+        societe = Societe.objects.first()  # À adapter si plusieurs sociétés
+        if not societe.location_societe:
+            messages.error(request, "La localisation de la société n'est pas configurée.")
+            logger.error("Localisation de la société non configurée.")
+            return redirect('employee')
+        societe_lat, societe_lon = map(float, societe.location_societe.split(','))
+    except Societe.DoesNotExist:
+        messages.error(request, "Aucune société configurée dans la base de données.")
+        logger.error("Aucune société trouvée dans la base de données.")
+        return redirect('employee')
+
+        # Gestion du pointage (entrée)
     if request.method == 'POST' and 'check_in' in request.POST:
         try:
+            # Récupérer la localisation envoyée par le client
+            employee_lat = request.POST.get('latitude')
+            employee_lon = request.POST.get('longitude')
+
+            if not employee_lat or not employee_lon:
+                messages.error(request, "Impossible de récupérer votre localisation.")
+                logger.warning(f"Localisation non fournie pour {request.user.username}")
+                return redirect('employee')
+
+            # Calculer la distance
+            distance = haversine_distance(employee_lat, employee_lon, societe_lat, societe_lon)
+            if distance > societe.rayon_acceptable:
+                messages.error(
+                    request,
+                    f"Pointage refusé : vous êtes trop loin du lieu de travail ({int(distance)}m, maximum {societe.rayon_acceptable}m)."
+                )
+                logger.warning(
+                    f"Pointage refusé pour {request.user.username} : distance {distance}m > {societe.rayon_acceptable}m"
+                )
+                return redirect('employee')
+
+            # Si la localisation est valide, procéder au pointage
             today = timezone.now().date()
             pointage, created = Pointage.objects.get_or_create(
                 employe=request.user,
@@ -320,8 +358,31 @@ def employee(request):
             logger.error(f"Erreur lors du pointage d'entrée pour {request.user.username} : {str(e)}")
         return redirect('employee')
 
+        # Gestion du pointage (sortie)
     if request.method == 'POST' and 'check_out' in request.POST:
         try:
+            # Récupérer la localisation envoyée par le client
+            employee_lat = request.POST.get('latitude')
+            employee_lon = request.POST.get('longitude')
+
+            if not employee_lat or not employee_lon:
+                messages.error(request, "Impossible de récupérer votre localisation.")
+                logger.warning(f"Localisation non fournie pour {request.user.username}")
+                return redirect('employee')
+
+            # Calculer la distance
+            distance = haversine_distance(employee_lat, employee_lon, societe_lat, societe_lon)
+            if distance > societe.rayon_acceptable:
+                messages.error(
+                    request,
+                    f"Pointage refusé : vous êtes trop loin du lieu de travail ({int(distance)}m, maximum {societe.rayon_acceptable}m)."
+                )
+                logger.warning(
+                    f"Pointage refusé pour {request.user.username} : distance {distance}m > {societe.rayon_acceptable}m"
+                )
+                return redirect('employee')
+
+            # Si la localisation est valide, procéder au pointage
             today = timezone.now().date()
             pointage = Pointage.objects.filter(employe=request.user, date=today).first()
             if pointage:
@@ -344,7 +405,6 @@ def employee(request):
             messages.error(request, f"Erreur lors du pointage de sortie : {str(e)}")
             logger.error(f"Erreur lors du pointage de sortie pour {request.user.username} : {str(e)}")
         return redirect(f"{reverse('employee')}?tab=pointage")
-
 
     # Soumission d'une nouvelle demande d'absence
     if request.method == 'POST' and 'type_absence' in request.POST and 'start_date' in request.POST:
@@ -548,6 +608,7 @@ def employee(request):
         'start_date_to': start_date_to,
     }
     return render(request, "ITservBack/employe_dashboard.html", context)
+
 
 def logout_view(request):  # Nouvelle vue pour la déconnexion
     auth_logout(request)  # Déconnecte l'utilisateur
@@ -780,8 +841,6 @@ class ChangePasswordView(View):
         messages.success(request, "Votre mot de passe a été changé avec succès. Veuillez vous reconnecter.")
         auth_logout(request)  # Déconnecter après changement
         return redirect('login')
-
-
 class PasswordResetView(View):
     template_name = 'ITservBack/login/password_reset.html'
 
@@ -949,135 +1008,100 @@ def responsable_rh_dashboard(request):
         messages.error(request, "Profil non trouvé.")
         return redirect('employee')
 
-    # Gestion des pointages (entrée/sortie)
-    if request.method == 'POST' and 'check_in' in request.POST:
+    # Gestion du formulaire pour ajouter/modifier une entreprise
+    if request.method == 'POST' and 'update_societe' in request.POST:
+        societe_id = request.POST.get('societe_id')
+        nom = request.POST.get('nom')
+        adresse = request.POST.get('adresse')
+        latitude = request.POST.get('latitude')
+        longitude = request.POST.get('longitude')
         try:
-            today = timezone.now().date()
-            pointage, created = Pointage.objects.get_or_create(
-                employe=request.user,
-                date=today,
-                defaults={'heure_entree': timezone.now().time()}
-            )
-            if not created and pointage.heure_entree:
-                messages.warning(request, "Vous avez déjà pointé votre entrée aujourd'hui.")
+            if societe_id:
+                societe = Societe.objects.get(id=societe_id)
+                societe.nom = nom
+                societe.adresse = adresse
+                societe.latitude = float(latitude) if latitude else None
+                societe.longitude = float(longitude) if longitude else None
+                societe.modified_by = request.user
+                societe.save()
+                messages.success(request, f"Entreprise {nom} mise à jour avec succès.")
             else:
-                messages.success(request, "Entrée pointée avec succès !")
+                societe = Societe.objects.create(
+                    nom=nom,
+                    adresse=adresse,
+                    latitude=float(latitude) if latitude else None,
+                    longitude=float(longitude) if longitude else None,
+                    modified_by=request.user
+                )
+                messages.success(request, f"Entreprise {nom} ajoutée avec succès.")
+        except ValueError:
+            messages.error(request, "Format de localisation invalide. Veuillez entrer des valeurs numériques pour la latitude et la longitude.")
         except Exception as e:
-            logger.error(f"Erreur lors du pointage d'entrée : {str(e)}")
-            messages.error(request, f"Erreur lors du pointage d'entrée : {str(e)}")
-        return redirect('responsable_rh_dashboard')
+            messages.error(request, f"Erreur lors de la gestion de l'entreprise : {str(e)}")
+        return redirect(f"{reverse('responsable_rh_dashboard')}#pointage")
 
-    if request.method == 'POST' and 'check_out' in request.POST:
+    # Gestion du formulaire pour ajouter/modifier un employé
+    if request.method == 'POST' and 'update_employee' in request.POST:
+        employee_id = request.POST.get('employee_id')
+        username = request.POST.get('username')
+        nom = request.POST.get('nom')
+        prenom = request.POST.get('prenom')
+        telephone = request.POST.get('telephone')
+        adresse = request.POST.get('adresse')
+        societe_id = request.POST.get('societe')
+        latitude = request.POST.get('latitude')
+        longitude = request.POST.get('longitude')
         try:
-            today = timezone.now().date()
-            pointage = Pointage.objects.filter(employe=request.user, date=today).first()
-            if pointage:
-                if pointage.heure_sortie:
-                    messages.warning(request, "Vous avez déjà pointé votre sortie aujourd'hui.")
-                else:
-                    pointage.heure_sortie = timezone.now().time()
-                    pointage.save()
-                    messages.success(request, "Sortie pointée avec succès !")
+            if employee_id:
+                user = User.objects.get(id=employee_id)
+                profil = Profil.objects.get(user=user)
+                user.username = username
+                profil.nom = nom
+                profil.prenom = prenom
+                profil.telephone = telephone
+                profil.adresse = adresse
+                profil.societe = Societe.objects.get(id=societe_id) if societe_id else None
+                profil.latitude = float(latitude) if latitude else None
+                profil.longitude = float(longitude) if longitude else None
+                profil.modified_by = request.user
+                user.save()
+                profil.save()
+                messages.success(request, f"Employé {username} mis à jour avec succès.")
             else:
-                messages.error(request, "Vous devez d'abord pointer une entrée avant de pointer une sortie.")
+                user = User.objects.create_user(
+                    username=username,
+                    password='defaultpassword123',  # À modifier par l'employé
+                    is_active=True
+                )
+                profil = Profil.objects.create(
+                    user=user,
+                    nom=nom,
+                    prenom=prenom,
+                    telephone=telephone,
+                    adresse=adresse,
+                    poste='EMPLOYE',
+                    societe=Societe.objects.get(id=societe_id) if societe_id else None,
+                    latitude=float(latitude) if latitude else None,
+                    longitude=float(longitude) if longitude else None,
+                    modified_by=request.user
+                )
+                messages.success(request, f"Employé {username} ajouté avec succès.")
+        except User.DoesNotExist:
+            messages.error(request, "Employé non trouvé.")
+        except Societe.DoesNotExist:
+            messages.error(request, "Entreprise non trouvée.")
+        except ValueError:
+            messages.error(request, "Format de localisation invalide ou données incorrectes.")
         except Exception as e:
-            logger.error(f"Erreur lors du pointage de sortie : {str(e)}")
-            messages.error(request, f"Erreur lors du pointage de sortie : {str(e)}")
-        return redirect('responsable_rh_dashboard')
+            messages.error(request, f"Erreur lors de la gestion de l'employé : {str(e)}")
+        return redirect(f"{reverse('responsable_rh_dashboard')}#pointage")
 
-    # Gestion de l'importation des pointages via Excel
-    if request.method == 'POST' and 'upload_pointage_excel' in request.POST:
-        try:
-            excel_file = request.FILES.get('excel_file')
-            if not excel_file:
-                messages.error(request, "Aucun fichier sélectionné.")
-                return redirect('responsable_rh_dashboard')
-
-            # Vérifier l'extension du fichier
-            if not excel_file.name.endswith(('.xlsx', '.xls')):
-                messages.error(request, "Le fichier doit être au format Excel (.xlsx ou .xls).")
-                return redirect('responsable_rh_dashboard')
-
-            # Lire le fichier Excel avec pandas
-            df = pd.read_excel(excel_file)
-            logger.info(f"Colonnes du fichier Excel : {df.columns.tolist()}")
-
-            # Vérifier les colonnes attendues
-            required_columns = ['username', 'date', 'heure_entree', 'heure_sortie']
-            if not all(col in df.columns for col in required_columns):
-                messages.error(request, "Le fichier Excel doit contenir les colonnes suivantes : username, date, heure_entree, heure_sortie.")
-                return redirect('responsable_rh_dashboard')
-
-            # Traiter chaque ligne du fichier Excel
-            for index, row in df.iterrows():
-                try:
-                    username = row['username']
-                    date_str = row['date']
-                    heure_entree = row['heure_entree']
-                    heure_sortie = row['heure_sortie']
-
-                    # Récupérer l'utilisateur
-                    user = User.objects.filter(username=username).first()
-                    if not user:
-                        logger.warning(f"Utilisateur {username} non trouvé à la ligne {index + 2}.")
-                        continue
-
-                    # Convertir la date
-                    if isinstance(date_str, str):
-                        date = pd.to_datetime(date_str).date()
-                    elif pd.isna(date_str):
-                        logger.warning(f"Date manquante à la ligne {index + 2}.")
-                        continue
-                    else:
-                        date = date_str
-
-                    # Convertir les heures
-                    if pd.isna(heure_entree):
-                        heure_entree = None
-                    elif isinstance(heure_entree, str):
-                        try:
-                            # Supposons que l'heure est au format HH:MM:SS ou HH:MM
-                            heure_entree = pd.to_datetime(heure_entree, format='%H:%M:%S' if ':' in heure_entree else '%H:%M').time()
-                        except ValueError:
-                            logger.warning(f"Format d'heure d'entrée invalide à la ligne {index + 2}: {heure_entree}")
-                            continue
-
-                    if pd.isna(heure_sortie):
-                        heure_sortie = None
-                    elif isinstance(heure_sortie, str):
-                        try:
-                            heure_sortie = pd.to_datetime(heure_sortie, format='%H:%M:%S' if ':' in heure_sortie else '%H:%M').time()
-                        except ValueError:
-                            logger.warning(f"Format d'heure de sortie invalide à la ligne {index + 2}: {heure_sortie}")
-                            continue
-
-                    # Créer ou mettre à jour le pointage
-                    pointage, created = Pointage.objects.get_or_create(
-                        employe=user,
-                        date=date,
-                        defaults={
-                            'heure_entree': heure_entree,
-                            'heure_sortie': heure_sortie
-                        }
-                    )
-                    if not created:
-                        pointage.heure_entree = heure_entree
-                        pointage.heure_sortie = heure_sortie
-                        pointage.save()
-                except Exception as e:
-                    logger.error(f"Erreur lors du traitement de la ligne {index + 2} : {str(e)}")
-                    messages.warning(request, f"Erreur à la ligne {index + 2} : {str(e)}")
-                    continue
-
-            messages.success(request, "Pointages importés avec succès !")
-        except Exception as e:
-            logger.error(f"Erreur lors de l'importation du fichier Excel : {str(e)}")
-            messages.error(request, f"Erreur lors de l'importation du fichier : {str(e)}")
-        return redirect('responsable_rh_dashboard')
-
-    # Récupérer les pointages (tous les employés pour le Responsable RH)
+    # Récupérer les données pour les formulaires
+    societes = Societe.objects.all()
+    employees = User.objects.filter(profil__poste='EMPLOYE')
     pointages = Pointage.objects.all().order_by('-date')
-    # Récupérer et filtrer les demandes d'autorisation
+
+    # Gestion des autres onglets (congés, absences, etc.) - inchangé
     autorisations = Autorisation.objects.all().order_by('-created_at')
     status = request.GET.get('status', '')
     start_date_from = request.GET.get('start_date_from', '')
@@ -1090,7 +1114,6 @@ def responsable_rh_dashboard(request):
     if start_date_to:
         autorisations = autorisations.filter(start_datetime__date__lte=start_date_to)
 
-    # Pagination pour les autorisations
     autorisation_paginator = Paginator(autorisations, 10)
     autorisation_page = request.GET.get('autorisation_page', 1)
     try:
@@ -1099,7 +1122,7 @@ def responsable_rh_dashboard(request):
         autorisations = autorisation_paginator.page(1)
     except EmptyPage:
         autorisations = autorisation_paginator.page(autorisation_paginator.num_pages)
-    # Récupérer et filtrer les demandes de congé
+
     leave_requests = Conge.objects.all().order_by('-created_at')
     type_conge = request.GET.get('type_conge', '')
     status = request.GET.get('status', '')
@@ -1121,7 +1144,6 @@ def responsable_rh_dashboard(request):
     if end_date_to:
         leave_requests = leave_requests.filter(end_date__lte=end_date_to)
 
-    # Pagination pour les demandes de congé
     leave_paginator = Paginator(leave_requests, 10)
     leave_page = request.GET.get('leave_page', 1)
     try:
@@ -1131,7 +1153,6 @@ def responsable_rh_dashboard(request):
     except EmptyPage:
         leave_requests = leave_paginator.page(leave_paginator.num_pages)
 
-    # Récupérer et filtrer les demandes d'absence
     absence_requests = Absence.objects.all().order_by('-created_at')
     type_absence = request.GET.get('type_absence', '')
     if type_absence:
@@ -1147,7 +1168,6 @@ def responsable_rh_dashboard(request):
     if end_date_to:
         absence_requests = absence_requests.filter(end_date__lte=end_date_to)
 
-    # Pagination pour les demandes d'absence
     absence_paginator = Paginator(absence_requests, 10)
     absence_page = request.GET.get('absence_page', 1)
     try:
@@ -1157,13 +1177,11 @@ def responsable_rh_dashboard(request):
     except EmptyPage:
         absence_requests = absence_paginator.page(absence_paginator.num_pages)
 
-    # Récupérer et filtrer l'historique de connexion
     login_histories = UserLoginHistory.objects.all().order_by('user', '-login_time')
     user_filter = request.GET.get('user_filter', '')
     if user_filter:
         login_histories = login_histories.filter(user__username__icontains=user_filter)
 
-    # Pagination pour l'historique de connexion
     history_paginator = Paginator(login_histories, 10)
     history_page = request.GET.get('history_page', 1)
     try:
@@ -1173,7 +1191,6 @@ def responsable_rh_dashboard(request):
     except EmptyPage:
         login_histories = history_paginator.page(history_paginator.num_pages)
 
-    # Calculer le nombre de notifications non lues
     unread_notifications_count = request.user.notifications.filter(is_read=False).count()
 
     context = {
@@ -1193,8 +1210,9 @@ def responsable_rh_dashboard(request):
         'login_histories': login_histories,
         'user_filter': user_filter,
         'unread_notifications_count': unread_notifications_count,
-    'autorisations': autorisations,  # Ajout de la clé manquante
-
+        'autorisations': autorisations,
+        'societes': societes,
+        'employees': employees,
     }
     return render(request, "ITservBack/dashboard_ResponsableRH.html", context)
 
@@ -1800,10 +1818,8 @@ def analyze_leave_trends(combined_df):
         'employee_clusters': employee_clusters
     }
 
-
-
-
 @login_required
+@never_cache
 def leave_planning_view(request):
 
     logger.info("Entrée dans leave_planning_view")
@@ -2116,7 +2132,7 @@ def leave_recommendations(request):
 redis_client = redis.Redis(host='localhost', port=6379, db=0)
 @login_required
 def pointage_anomalies(request):
-         if request.user.profil.poste != 'ResponsableRH':
+         if request.user.profil.poste != 'EMPLOYE':
              messages.error(request, "Accès non autorisé.")
              return redirect('employee')
 
@@ -2129,7 +2145,7 @@ redis_client = redis.Redis(host='localhost', port=6379, db=0)
 
 @login_required
 def leave_sentiment_analysis(request):
-         if request.user.profil.poste != 'ResponsableRH':
+         if request.user.profil.poste != 'EMPLOYE':
              messages.error(request, "Accès non autorisé.")
              return redirect('employee')
 
@@ -2144,4 +2160,125 @@ def leave_sentiment_analysis(request):
                  sentiments.append({'reason': absence.reason, 'sentiment': sentiment.decode('utf-8')})
 
          return render(request, 'ITservBack/leave_sentiments.html', {'sentiments': sentiments})
+@login_required
+def export_pointages(request):
+    pointages = Pointage.objects.filter(employe=request.user)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Pointages"
+    ws.append(["Date", "Heure d'entrée", "Heure de sortie", "Localisation", "Valide"])
+    for p in pointages:
+        ws.append([
+            p.date,
+            p.heure_entree or "-",
+            p.heure_sortie or "-",
+            f"{p.latitude}, {p.longitude}" if p.latitude and p.longitude else "-",
+            "Oui" if p.est_valide else "Non"
+        ])
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    response = HttpResponse(
+        buffer,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    response["Content-Disposition"] = "attachment; filename=pointages.xlsx"
+    return response
 
+
+
+
+
+@login_required
+def generate_leave_message(request, leave_id):
+    logger.info(f"Entrée dans generate_leave_message pour congé ID {leave_id}")
+
+    # Vérifier si l'utilisateur est authentifié et a un rôle d'employé
+    if not request.user.is_authenticated or request.user.profil.poste != 'EMPLOYE':
+        logger.error("Utilisateur non autorisé ou non authentifié, redirection vers login")
+        messages.error(request, "Accès non autorisé.")
+        return redirect('login')
+
+    # Récupérer la demande de congé
+    try:
+        leave = Conge.objects.get(id=leave_id, employee=request.user)
+    except Conge.DoesNotExist:
+        logger.error(f"Demande de congé ID {leave_id} non trouvée")
+        messages.error(request, "Demande de congé non trouvée.")
+        return redirect('employee')
+
+    # Charger le modèle d'IA générative (distilgpt2)
+    try:
+        generator = pipeline('text-generation', model='distilgpt2')
+    except Exception as e:
+        logger.error(f"Erreur lors du chargement du modèle d'IA générative : {str(e)}")
+        messages.error(request, "Erreur lors de la génération du message.")
+        return redirect('employee')
+
+    # Générer un message en fonction du statut de la demande
+    if leave.status == 'approved':
+        prompt = f"Écrire un message à {request.user.username} pour confirmer que son congé du {leave.start_date} au {leave.end_date} a été approuvé."
+    else:
+        # Si la demande est rejetée, suggérer une période alternative
+        alternative_dates = suggest_alternative_dates(leave)  # Fonction définie ci-dessous
+        if alternative_dates:
+            alt_start, alt_end = alternative_dates[0]
+            prompt = f"Écrire un message à {request.user.username} pour expliquer que son congé du {leave.start_date} au {leave.end_date} a été rejeté et suggérer une nouvelle période du {alt_start} au {alt_end}."
+        else:
+            prompt = f"Écrire un message à {request.user.username} pour expliquer que son congé du {leave.start_date} au {leave.end_date} a été rejeté et qu'aucune période alternative n'est disponible."
+
+    # Générer le message
+    try:
+        message = generator(prompt, max_length=50, num_return_sequences=1)[0]['generated_text']
+        logger.info(f"Message généré : {message}")
+    except Exception as e:
+        logger.error(f"Erreur lors de la génération du message : {str(e)}")
+        message = "Erreur lors de la génération du message. Veuillez contacter un administrateur."
+        messages.error(request, message)
+
+    # Sauvegarder le message dans les notifications
+    Notification.objects.create(
+        user=request.user,
+        message=message
+    )
+
+    context = {
+        'leave': leave,
+        'message': message,
+    }
+    return render(request, 'ITservBack/leave_message.html', context)
+
+
+def suggest_alternative_dates(leave):
+    start_date = leave.start_date
+    end_date = leave.end_date
+    duration = (end_date - start_date).days + 1
+    alternative_dates = []
+
+    # Chercher une période de même durée sans chevauchement
+    current_start = start_date + timedelta(days=1)
+    max_attempts = 30  # Chercher sur 30 jours
+    for _ in range(max_attempts):
+        current_end = current_start + timedelta(days=duration - 1)
+        overlapping_leaves = Conge.objects.filter(
+            status='approved',
+            start_date__lte=current_end,
+            end_date__gte=current_start
+        ).exclude(employee=leave.employee)
+        if not overlapping_leaves.exists():
+            alternative_dates.append((current_start, current_end))
+            break
+        current_start += timedelta(days=1)
+
+    return alternative_dates
+def haversine_distance(lat1, lon1, lat2, lon2):
+    """Calcule la distance en mètres entre deux points (latitude, longitude)."""
+    R = 6371000  # Rayon de la Terre en mètres
+    lat1, lon1, lat2, lon2 = map(radians, [float(lat1), float(lon1), float(lat2), float(lon2)])
+
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+    c = 2 * atan2(sqrt(a), sqrt(1 - a))
+    distance = R * c
+    return distance

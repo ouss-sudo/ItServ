@@ -47,6 +47,7 @@ urlpatterns = [
     path('leave_recommendations/', views.leave_recommendations,name='leave_recommendations'),
     path('pointage_anomalies/', views.pointage_anomalies, name='pointage_anomalies'),
     path('leave_sentiments/', views.leave_sentiment_analysis, name='leave_sentiments'),
-
+    path('export_pointages/', views.export_pointages, name='export_pointages'),
+    path('leave_message/<int:leave_id>/', views.generate_leave_message, name='generate_leave_message'),
 
               ]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -100,6 +100,18 @@ class Absence(models.Model):
 
     def __str__(self):
         return f"{self.employee.username} - {self.type_absence.type} - {self.start_date}"
+
+class Societe(models.Model):
+    nom = models.CharField(max_length=255)
+    adresse = models.CharField(max_length=255, blank=True, null=True)
+    location_societe = models.CharField(max_length=100, blank=True, null=True)  # Format: "latitude,longitude"
+    rayon_acceptable = models.FloatField(default=100.0)  # Rayon en mètres
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.nom
+
 class Pointage(models.Model):
     employe = models.ForeignKey(User, on_delete=models.CASCADE, related_name='pointages', verbose_name="Employé")
     heure_entree = models.DateTimeField(null=True, blank=True, verbose_name="Heure d'entrée")
@@ -107,7 +119,10 @@ class Pointage(models.Model):
     date = models.DateField(default=now, verbose_name="Date")
     cree_le = models.DateTimeField(auto_now_add=True, verbose_name="Créé le")
     mis_a_jour_le = models.DateTimeField(auto_now=True, verbose_name="Mis à jour le")
-
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
+    est_valide = models.BooleanField(default=True)
+    societe = models.ForeignKey(Societe, on_delete=models.SET_NULL, null=True)
     def __str__(self):
         return f"{self.employe.username} - {self.date} - Entrée: {self.heure_entree}, Sortie: {self.heure_sortie}"
 

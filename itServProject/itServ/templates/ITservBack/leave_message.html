@@ -1,0 +1,5 @@
+<h2>Message concernant votre demande de congé</h2>
+<p><strong>Dates :</strong> {{ leave.start_date }} au {{ leave.end_date }}</p>
+<p><strong>Statut :</strong> {{ leave.status }}</p>
+<p><strong>Message :</strong> {{ message }}</p>
+<a href="{% url 'employee' %}">Retour au tableau de bord</a>

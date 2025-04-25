@@ -159,43 +159,19 @@ redis_client = redis.Redis(host='localhost', port=6379, db=0)
 @shared_task
 def detect_pointage_anomalies():
     logger.info("Analyse des anomalies de pointage")
-    pointages = Pointage.objects.filter(
-        date__gte=datetime.now().date() - timedelta(days=30)
-    ).values('employe__username', 'date', 'heure_entree', 'heure_sortie')
-
-    if not pointages:
-        logger.warning("Aucun pointage à analyser")
-        return
-
-    df = pd.DataFrame(pointages)
-    df['heure_entree'] = pd.to_datetime(df['heure_entree'].astype(str), format='%H:%M:%S', errors='coerce')
-    df['heure_sortie'] = pd.to_datetime(df['heure_sortie'].astype(str), format='%H:%M:%S', errors='coerce')
-    df['day_of_week'] = pd.to_datetime(df['date']).dt.dayofweek
-    df['entree_hour'] = df['heure_entree'].dt.hour + df['heure_entree'].dt.minute / 60
-    df['sortie_hour'] = df['heure_sortie'].dt.hour + df['heure_sortie'].dt.minute / 60
-    df['duration'] = (df['sortie_hour'] - df['entree_hour']).fillna(0)
-    df['employe_code'] = df['employe__username'].astype('category').cat.codes
-
-    features = ['entree_hour', 'sortie_hour', 'duration', 'day_of_week', 'employe_code']
-    X = df[features].fillna(0)
-
-    # Détection des anomalies
-    model = IsolationForest(contamination=0.1, random_state=42)
-    df['anomaly'] = model.fit_predict(X)
-    anomalies = df[df['anomaly'] == -1]
-
-    # Stocker et notifier
-    for idx, row in anomalies.iterrows():
-        message = f"Anomalie détectée pour {row['employe__username']} le {row['date']}: entrée {row['heure_entree']}, sortie {row['heure_sortie']}"
-        redis_client.lpush('pointage_anomalies', message)
+    pointages = Pointage.objects.filter(date=timezone.now().date(), est_valide=False)
+    anomalies = []
+    for pointage in pointages:
+        anomaly = f"Anomalie pour {pointage.employe.username} le {pointage.date} : localisation hors rayon"
+        redis_client.rpush('pointage_anomalies', anomaly)
         Notification.objects.create(
-            user=User.objects.get(username=row['employe__username']),
-            message=message
+            user=pointage.employe,
+            message=anomaly
         )
-        # Notifier RH
-        for rh in Profil.objects.filter(poste='ResponsableRH'):
-            Notification.objects.create(user=rh.user, message=message)
+        anomalies.append(anomaly)
+        logger.info(anomaly)
     logger.info(f"{len(anomalies)} anomalies détectées")
+    return anomalies
 redis_client = redis.Redis(host='localhost', port=6379, db=0)
 @shared_task
 def analyze_leave_reasons():

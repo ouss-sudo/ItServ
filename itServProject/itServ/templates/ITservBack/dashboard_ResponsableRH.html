@@ -6,7 +6,7 @@
 {% block content %}
 <div class="container-fluid">
     <div class="row justify-content-center">
-        <!-- Sidebar centrée -->
+        <!-- Sidebar -->
         <div class="col-12 col-md-3 col-lg-2 sidebar mx-auto">
             <div class="sidebar-logo mb-4">
                 <img src="{% static 'assets/img/logo.png' %}" alt="ITserv Logo" class="img-fluid">
@@ -17,11 +17,11 @@
                         <i class="bi bi-speedometer2 me-2"></i> Tableau de bord
                     </a>
                 </li>
-                   <li class="nav-item">
-        <a href="{% url 'leave_planning' %}" class="nav-link">Génération du planning</a>
-    </li>
                 <li class="nav-item">
-                    <a href="{% url 'responsable_rh_dashboard' %}" class="nav-link {% if request.path == '/responsable_rh/' %}active{% endif %}">
+                    <a href="{% url 'leave_planning' %}" class="nav-link">Génération du planning</a>
+                </li>
+                <li class="nav-item">
+                    <a href="{% url 'responsable_rh_dashboard' %}" class="nav-link">
                         <i class="bi bi-file-earmark-text me-2"></i> Congés / Autorisations
                     </a>
                 </li>
@@ -50,28 +50,28 @@
                 {% endfor %}
             {% endif %}
 
-            <!-- Tabs pour Congé, Autorisation et Historique -->
+            <!-- Tabs -->
             <ul class="nav nav-tabs mb-3">
                 <li class="nav-item">
-                    <a class="nav-link active" href="#conge" data-bs-toggle="tab">Congé</a>
+                    <a class="nav-link {% if not request.GET.tab or request.GET.tab == 'conge' %}active{% endif %}" href="#conge" data-bs-toggle="tab">Congé</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="#autorisation" data-bs-toggle="tab">Autorisation</a>
-                </li>
-                 <li class="nav-item">
-                    <a class="nav-link" href="#pointage" data-bs-toggle="tab">pointage</a>
+                    <a class="nav-link {% if request.GET.tab == 'autorisation' %}active{% endif %}" href="#autorisation" data-bs-toggle="tab">Autorisation</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="#absence" data-bs-toggle="tab">absence</a>
+                    <a class="nav-link {% if request.GET.tab == 'pointage' %}active{% endif %}" href="#pointage" data-bs-toggle="tab">Pointage</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="#historique" data-bs-toggle="tab">Historique de connexion</a>
+                    <a class="nav-link {% if request.GET.tab == 'absence' %}active{% endif %}" href="#absence" data-bs-toggle="tab">Absence</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if request.GET.tab == 'historique' %}active{% endif %}" href="#historique" data-bs-toggle="tab">Historique de connexion</a>
                 </li>
             </ul>
 
             <div class="tab-content">
-                <div class="tab-pane fade show active" id="conge">
-                    <!-- Carte pour le filtre de recherche -->
+                <!-- Onglet Congé (inchangé) -->
+                <div class="tab-pane fade {% if not request.GET.tab or request.GET.tab == 'conge' %}show active{% endif %}" id="conge">
                     <div class="card mb-4">
                         <div class="card-header bg-primary text-white">
                             <h5 class="card-title mb-0">Filtre de recherche</h5>
@@ -101,7 +101,6 @@
                                         <label for="start_date_from" class="form-label">Date Début (Du)</label>
                                         <input type="date" class="form-control" id="start_date_from" name="start_date_from" value="{{ start_date_from }}">
                                     </div>
-
                                     <div class="col-md-3 mb-3">
                                         <label for="end_date_to" class="form-label">Date Fin (Au)</label>
                                         <input type="date" class="form-control" id="end_date_to" name="end_date_to" value="{{ end_date_to }}">
@@ -114,31 +113,27 @@
                             </form>
                         </div>
                     </div>
-  <!-- Bouton pour afficher/masquer la carte -->
-  <div class="text-end mt-3">
-    <button type="button" class="btn btn-primary" id="toggleAddType">Ajouter un type de congé</button>
-</div>
-
-<!-- Carte pour ajouter un type de congé (cachée par défaut) -->
-<div class="card mt-3" id="addTypeCard" style="display: none;">
-    <div class="card-header bg-primary text-white">
-        <h5 class="card-title mb-0">Ajouter un nouveau type de congé</h5>
-    </div>
-    <div class="card-body">
-        <form method="post">
-            {% csrf_token %}
-            <div class="mb-3">
-                <label for="new_type_conge" class="form-label">Nouveau type de congé</label>
-                <input type="text" class="form-control" id="new_type_conge" name="new_type_conge" required>
-            </div>
-            <div class="text-end">
-                <button type="submit" class="btn btn-success">Sauvegarder</button>
-                <button type="button" class="btn btn-secondary" id="cancelAddType">Annuler</button>
-            </div>
-        </form>
-    </div>
-</div>
-                    <!-- Carte pour la liste des demandes de congé -->
+                    <div class="text-end mt-3">
+                        <button type="button" class="btn btn-primary" id="toggleAddType">Ajouter un type de congé</button>
+                    </div>
+                    <div class="card mt-3" id="addTypeCard" style="display: none;">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="card-title mb-0">Ajouter un nouveau type de congé</h5>
+                        </div>
+                        <div class="card-body">
+                            <form method="post">
+                                {% csrf_token %}
+                                <div class="mb-3">
+                                    <label for="new_type_conge" class="form-label">Nouveau type de congé</label>
+                                    <input type="text" class="form-control" id="new_type_conge" name="new_type_conge" required>
+                                </div>
+                                <div class="text-end">
+                                    <button type="submit" class="btn btn-success">Sauvegarder</button>
+                                    <button type="button" class="btn btn-secondary" id="cancelAddType">Annuler</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
                     <div class="card">
                         <div class="card-header bg-dark-teal text-red d-flex justify-content-between align-items-center">
                             <h5 class="card-title mb-0">Liste des demandes de congé</h5>
@@ -172,45 +167,23 @@
                                                     <td>{{ request.end_date|date:"Y-m-d" }}</td>
                                                     <td>{{ request.reason }}</td>
                                                     <td>
-                                                        <span class="badge {% if request.status == 'pending' %}bg-warning text-dark{% elif request.status == 'approved' %}bg-success text-white{% elif request.status == 'rejected' %}bg-danger text-white{% endif %}">
+                                                        <span class="badge {% if request.status == 'En attente' %}bg-warning text-dark{% elif request.status == 'Approuvé' %}bg-success text-white{% elif request.status == 'Refusé' %}bg-danger text-white{% else %}bg-info text-white{% endif %}">
                                                             {{ request.status|capfirst }}
                                                         </span>
                                                     </td>
                                                     <td>{{ request.created_at|date:"Y-m-d H:i" }}</td>
                                                     <td>
-                                                        <a href="{% url 'update_leave_status' leave_id=request.id status='approved' %}"
-                                                           class="btn btn-sm btn-success me-1 {% if request.status == 'approved' %}disabled{% endif %}"
-                                                           {% if request.status == 'approved' %}aria-disabled="true"{% endif %}>Accepter</a>
-                                                        <a href="{% url 'update_leave_status' leave_id=request.id status='rejected' %}"
-                                                           class="btn btn-sm btn-danger {% if request.status == 'rejected' %}disabled{% endif %}"
-                                                           {% if request.status == 'rejected' %}aria-disabled="true"{% endif %}>Refuser</a>
+                                                        <a href="{% url 'update_leave_status' leave_id=request.id status='Approuvé' %}"
+                                                           class="btn btn-sm btn-success me-1 {% if request.status == 'Approuvé' %}disabled{% endif %}"
+                                                           {% if request.status == 'Approuvé' %}aria-disabled="true"{% endif %}>Accepter</a>
+                                                        <a href="{% url 'update_leave_status' leave_id=request.id status='Refusé' %}"
+                                                           class="btn btn-sm btn-danger {% if request.status == 'Refusé' %}disabled{% endif %}"
+                                                           {% if request.status == 'Refusé' %}aria-disabled="true"{% endif %}>Refuser</a>
                                                     </td>
                                                 </tr>
                                             {% endfor %}
                                         </tbody>
                                     </table>
-                                    <!-- Dans header ou un autre endroit -->
-<div id="notification-container">
-    <h3>Notifications</h3>
-    <ul id="notification-list">
-        {% for notification in user.notifications.all %}
-            <li>{{ notification.message }} - {{ notification.created_at }}</li>
-        {% empty %}
-            <li>Aucune notification</li>
-        {% endfor %}
-    </ul>
-</div>
-
-<script>
-    socket.onmessage = function (event) {
-        const data = JSON.parse(event.data);
-        const message = data.message;
-        const notificationList = document.getElementById("notification-list");
-        const newNotification = document.createElement("li");
-        newNotification.textContent = message + " - " + new Date().toLocaleString();
-        notificationList.prepend(newNotification); // Ajouter au début de la liste
-    };
-</script>
                                 </div>
                                 <nav aria-label="Page navigation">
                                     <ul class="pagination justify-content-end mt-3">
@@ -249,359 +222,480 @@
                     </div>
                 </div>
 
-                <div class="tab-pane fade" id="autorisation">
- <!-- Tableau des demandes d'autorisation -->
-    <div class="card">
-        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-            <h5 class="card-title mb-0">Liste des demandes d'autorisation</h5>
-            <div class="filter-input">
-                <input type="text" class="form-control" placeholder="Filtrer parmi ces éléments..." id="filterInput" onkeyup="filterTable()">
-            </div>
-        </div>
-        <div class="card-body">
-            <p>Nombre de demandes : {{ autorisations.paginator.count }}</p>
-            {% if autorisations %}
-                <div class="table-responsive">
-                    <table class="table custom-table" id="autorisationsTable">
-                        <thead class="bg-dark-teal text-white">
-                            <tr>
-                                <th>Employé</th>
-                                <th>Date de début</th>
-                                <th>Date de fin</th>
-                                <th>Durée</th>
-                                <th>Description</th>
-                                <th>Statut</th>
-                                <th>Date de création</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for autorisation in autorisations %}
-                                <tr>
-                                    <td>{{ autorisation.employee.username }}</td>
-                                    <td>{{ autorisation.start_datetime|date:"Y-m-d H:i" }}</td>
-                                    <td>{{ autorisation.end_datetime|date:"Y-m-d H:i" }}</td>
-                                    <td>{{ autorisation.duration }}</td>
-                                    <td>{{ autorisation.description }}</td>
-                                    <td>
-                                        <span class="badge {% if autorisation.status == 'en cours' %}bg-warning text-dark{% elif autorisation.status == 'Approved' %}bg-success text-white{% elif autorisation.status == 'Rejected' %}bg-danger text-white{% endif %}">
-                                            {{ autorisation.status|capfirst }}
-                                        </span>
-                                    </td>
-                                    <td>{{ autorisation.created_at|date:"Y-m-d H:i" }}</td>
-                                    <td>
-                                        <a href="{% url 'accept_autorisation' autorisation.id %}"
-                                           class="btn btn-sm btn-success me-1 {% if autorisation.status == 'Approved' %}disabled{% endif %}"
-                                           {% if autorisation.status == 'Approved' %}aria-disabled="true"{% endif %}
-                                           onclick="return confirm('Voulez-vous accepter cette demande ?');">
-                                            Accepter
-                                        </a>
-                                        <a href="{% url 'reject_autorisation' autorisation.id %}"
-                                           class="btn btn-sm btn-danger {% if autorisation.status == 'Rejected' %}disabled{% endif %}"
-                                           {% if autorisation.status == 'Rejected' %}aria-disabled="true"{% endif %}
-                                           onclick="return confirm('Voulez-vous refuser cette demande ?');">
-                                            Refuser
-                                        </a>
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                <nav aria-label="Page navigation">
-                    <ul class="pagination justify-content-end mt-3">
-                        {% if autorisations.has_previous %}
-                            <li class="page-item">
-                                <a class="page-link" href="?autorisation_page={{ autorisations.previous_page_number }}{% if status %}&status={{ status }}{% endif %}{% if start_date_from %}&start_date_from={{ start_date_from }}{% endif %}{% if start_date_to %}&start_date_to={{ start_date_to }}{% endif %}" aria-label="Previous">
-                                    <span aria-hidden="true">«</span>
-                                </a>
-                            </li>
-                        {% else %}
-                            <li class="page-item disabled"><span class="page-link">«</span></li>
-                        {% endif %}
-                        {% for num in autorisations.paginator.page_range %}
-                            <li class="page-item {% if autorisations.number == num %}active{% endif %}">
-                                <a class="page-link" href="?autorisation_page={{ num }}{% if status %}&status={{ status }}{% endif %}{% if start_date_from %}&start_date_from={{ start_date_from }}{% endif %}{% if start_date_to %}&start_date_to={{ start_date_to }}{% endif %}">
-                                    {{ num }}
-                                </a>
-                            </li>
-                        {% endfor %}
-                        {% if autorisations.has_next %}
-                            <li class="page-item">
-                                <a class="page-link" href="?autorisation_page={{ autorisations.next_page_number }}{% if status %}&status={{ status }}{% endif %}{% if start_date_from %}&start_date_from={{ start_date_from }}{% endif %}{% if start_date_to %}&start_date_to={{ start_date_to }}{% endif %}" aria-label="Next">
-                                    <span aria-hidden="true">»</span>
-                                </a>
-                            </li>
-                        {% else %}
-                            <li class="page-item disabled"><span class="page-link">»</span></li>
-                        {% endif %}
-                    </ul>
-                    <p class="text-muted text-end mt-2">{{ autorisations.start_index }}-{{ autorisations.end_index }} de {{ autorisations.paginator.count }}</p>
-                </nav>
-            {% else %}
-                <p class="text-center">Aucune demande d'autorisation trouvée.</p>
-            {% endif %}
-        </div>
-    </div>
-                     <div class="card-body">
-                            {% include 'ITservBack/ai_leave_planning.html' %}
+                <!-- Onglet Autorisation (inchangé) -->
+                <div class="tab-pane fade {% if request.GET.tab == 'autorisation' %}show active{% endif %}" id="autorisation">
+                    <div class="card">
+                        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                            <h5 class="card-title mb-0">Liste des demandes d'autorisation</h5>
+                            <div class="filter-input">
+                                <input type="text" class="form-control" placeholder="Filtrer parmi ces éléments..." id="filterInput" onkeyup="filterTable('filterInput', 'autorisationsTable')">
+                            </div>
                         </div>
-                </div>
-                 <div class="tab-pane fade" id="pointage">
-    <!-- Formulaire pour le pointage -->
-<div class="card mb-4">
-    <div class="card-header">Pointage</div>
-    <div class="card-body">
-        <form method="post">
-            {% csrf_token %}
-            <div class="text-center">
-                <button type="submit" name="check_in" class="btn btn-success mb-2">Pointer l'entrée</button>
-                <button type="submit" name="check_out" class="btn btn-danger mb-2">Pointer la sortie</button>
-            </div>
-        </form>
-    </div>
-    <!-- Liste des pointages -->
-     <div class="card mb-4">
-        <div class="card-header">Importer les pointages via Excel</div>
-        <div class="card-body">
-            <form method="post" enctype="multipart/form-data">
-                {% csrf_token %}
-                <div class="mb-3">
-                    <label for="excel_file" class="form-label">Sélectionner un fichier Excel</label>
-                    <input type="file" class="form-control" id="excel_file" name="excel_file" accept=".xlsx, .xls" required>
-                </div>
-                <div class="text-end">
-                    <button type="submit" name="upload_pointage_excel" class="btn btn-primary">Importer</button>
-                </div>
-            </form>
-        </div>
-    </div>
-<div class="card mb-4">
-        <div class="card-header">Mes pointages</div>
-        <div class="card-body">
-
-            <table class="table table-bordered">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Heure d'entrée</th>
-                        <th>Heure de sortie</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for pointage in pointages %}
-                    <tr>
-                        <td>{{ pointage.date }}</td>
-                        <td>{{ pointage.heure_entree|default:"Non pointé" }}</td>
-                        <td>{{ pointage.heure_sortie|default:"Non pointé" }}</td>
-                    </tr>
-                    {% empty %}
-                    <tr>
-                        <td colspan="3">Aucun pointage enregistré</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
-<!-- Liste des pointages -->
-<div class="card mb-4">
-  <div class="table-responsive">
-        <table class="table table-striped table-bordered">
-            <thead>
-                <tr>
-                    <th>Utilisateur</th>
-                    <th>Date</th>
-                    <th>Heure d'entrée</th>
-                    <th>Heure de sortie</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for pointage in pointages %}
-                    <tr>
-                        <td>{{ pointage.employe.username }}</td>
-                        <td>{{ pointage.date }}</td>
-                        <!-- Gestion de l'affichage des heures selon que c'est un DateTimeField ou TimeField -->
-                        <td>
-                            {% if pointage.heure_entree %}
-                                {% if pointage.heure_entree %}
-                                    {{ pointage.heure_entree|time:"H:i:s" }}
-                                {% else %}
-                                    {{ pointage.heure_entree }}
-                                {% endif %}
-                            {% else %}
-                                Non pointé
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if pointage.heure_sortie %}
-                                {% if pointage.heure_sortie %}
-                                    {{ pointage.heure_sortie|time:"H:i:s" }}
-                                {% else %}
-                                    {{ pointage.heure_sortie }}
-                                {% endif %}
-                            {% else %}
-                                Non pointé
-                            {% endif %}
-                        </td>
-                    </tr>
-                {% empty %}
-                    <tr>
-                        <td colspan="4" class="text-center">Aucun pointage trouvé.</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-</div>
-
-  <div class="tab-pane fade" id="absence">
-    <!-- Carte pour le filtre de recherche -->
-    <div class="card mb-4">
-        <div class="card-header bg-primary text-white">
-            <h5 class="card-title mb-0">Filtre de recherche</h5>
-        </div>
-        <div class="card-body">
-            <form method="get">
-                <div class="row">
-                    <div class="col-md-3 mb-3">
-                        <label for="type_absence_filter" class="form-label">Type d'absence</label>
-                        <select class="form-select" id="type_absence_filter" name="type_absence">
-                            <option value="">Tous</option>
-                            {% for type in types_absence %}
-                                <option value="{{ type.id }}" {% if type_absence == type.id|stringformat:"s" %}selected{% endif %}>{{ type.type }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-3 mb-3">
-                        <label for="status_filter" class="form-label">État demande</label>
-                        <select class="form-select" id="status_filter" name="status">
-                            <option value="">Tous</option>
-                            {% for value, label in status_choices %}
-                                <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="col-md-3 mb-3">
-                        <label for="start_date_from" class="form-label">Date Début (Du)</label>
-                        <input type="date" class="form-control" id="start_date_from" name="start_date_from" value="{{ start_date_from }}">
-                    </div>
-                    <div class="col-md-3 mb-3">
-                        <label for="end_date_to" class="form-label">Date Fin (Au)</label>
-                        <input type="date" class="form-control" id="end_date_to" name="end_date_to" value="{{ end_date_to }}">
-                    </div>
-                    <div class="col-md-6 mb-3 d-flex align-items-end justify-content-end">
-                        <button type="submit" class="btn btn-primary me-2"><i class="bi bi-search me-2"></i>Rechercher</button>
-                        <a href="{% url 'responsable_rh_dashboard' %}#absence" class="btn btn-outline-danger"><i class="bi bi-arrow-clockwise me-2"></i>Réinitialiser</a>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Carte pour la liste des demandes d'absence -->
-    <div class="card">
-        <div class="card-header bg-dark-teal text-red d-flex justify-content-between align-items-center">
-            <h5 class="card-title mb-0">Liste des demandes d'absence</h5>
-            <div class="filter-input">
-                <input type="text" class="form-control" placeholder="Filtrer parmi ces éléments..." id="filterInputAbsences" onkeyup="filterTable('filterInputAbsences', 'absencesTable')">
-            </div>
-        </div>
-        <div class="card-body">
-            <p>Nombre de demandes : {{ absence_requests.paginator.count }}</p>
-            {% if absence_requests %}
-                <div class="table-responsive">
-                    <table class="table custom-table" id="absencesTable">
-                        <thead class="bg-dark-teal text-white">
-                            <tr>
-                                <th>Employé</th>
-                                <th>Type d'absence</th>
-                                <th>Date de début</th>
-                                <th>Date de fin</th>
-                                <th>Raison</th>
-                                <th>Statut</th>
-                                <th>Image</th>
-                                <th>Date de création</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for request in absence_requests %}
-                                <tr>
-                                    <td>{{ request.employee.username }}</td>
-                                    <td>{{ request.type_absence.type }}</td>
-                                    <td>{{ request.start_date|date:"Y-m-d" }}</td>
-                                    <td>{{ request.end_date|date:"Y-m-d" }}</td>
-                                    <td>{{ request.reason }}</td>
-                                    <td>
-                                        <span class="badge {% if request.status == 'pending' %}bg-warning text-dark{% elif request.status == 'approved' %}bg-success text-white{% elif request.status == 'rejected' %}bg-danger text-white{% endif %}">
-                                            {{ request.status|capfirst }}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        {% if request.image %}
-                                            <a href="{{ request.image.url }}" target="_blank">
-                                                <img src="{{ request.image.url }}" alt="Justificatif" style="max-width: 100px;">
-                                            </a>
+                        <div class="card-body">
+                            <p>Nombre de demandes : {{ autorisations.paginator.count }}</p>
+                            {% if autorisations %}
+                                <div class="table-responsive">
+                                    <table class="table custom-table" id="autorisationsTable">
+                                        <thead class="bg-dark-teal text-white">
+                                            <tr>
+                                                <th>Employé</th>
+                                                <th>Date de début</th>
+                                                <th>Date de fin</th>
+                                                <th>Durée</th>
+                                                <th>Description</th>
+                                                <th>Statut</th>
+                                                <th>Date de création</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for autorisation in autorisations %}
+                                                <tr>
+                                                    <td>{{ autorisation.employee.username }}</td>
+                                                    <td>{{ autorisation.start_datetime|date:"Y-m-d H:i" }}</td>
+                                                    <td>{{ autorisation.end_datetime|date:"Y-m-d H:i" }}</td>
+                                                    <td>{{ autorisation.duration }}</td>
+                                                    <td>{{ autorisation.description }}</td>
+                                                    <td>
+                                                        <span class="badge {% if autorisation.status == 'en cours' %}bg-warning text-dark{% elif autorisation.status == 'Approved' %}bg-success text-white{% elif autorisation.status == 'Rejected' %}bg-danger text-white{% endif %}">
+                                                            {{ autorisation.status|capfirst }}
+                                                        </span>
+                                                    </td>
+                                                    <td>{{ autorisation.created_at|date:"Y-m-d H:i" }}</td>
+                                                    <td>
+                                                        <a href="{% url 'accept_autorisation' autorisation.id %}"
+                                                           class="btn btn-sm btn-success me-1 {% if autorisation.status == 'Approved' %}disabled{% endif %}"
+                                                           {% if autorisation.status == 'Approved' %}aria-disabled="true"{% endif %}
+                                                           onclick="return confirm('Voulez-vous accepter cette demande ?');">
+                                                            Accepter
+                                                        </a>
+                                                        <a href="{% url 'reject_autorisation' autorisation.id %}"
+                                                           class="btn btn-sm btn-danger {% if autorisation.status == 'Rejected' %}disabled{% endif %}"
+                                                           {% if autorisation.status == 'Rejected' %}aria-disabled="true"{% endif %}
+                                                           onclick="return confirm('Voulez-vous refuser cette demande ?');">
+                                                            Refuser
+                                                        </a>
+                                                    </td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <nav aria-label="Page navigation">
+                                    <ul class="pagination justify-content-end mt-3">
+                                        {% if autorisations.has_previous %}
+                                            <li class="page-item">
+                                                <a class="page-link" href="?autorisation_page={{ autorisations.previous_page_number }}{% if status %}&status={{ status }}{% endif %}{% if start_date_from %}&start_date_from={{ start_date_from }}{% endif %}{% if start_date_to %}&start_date_to={{ start_date_to }}{% endif %}" aria-label="Previous">
+                                                    <span aria-hidden="true">«</span>
+                                                </a>
+                                            </li>
                                         {% else %}
-                                            Aucune image
+                                            <li class="page-item disabled"><span class="page-link">«</span></li>
                                         {% endif %}
-                                    </td>
-                                    <td>{{ request.created_at|date:"Y-m-d H:i" }}</td>
-                                    <td>
-                                        <a href="{% url 'update_absence_status' absence_id=request.id status='approved' %}"
-                                           class="btn btn-sm btn-success me-1 {% if request.status == 'approved' %}disabled{% endif %}"
-                                           {% if request.status == 'approved' %}aria-disabled="true"{% endif %}>Accepter</a>
-                                        <a href="{% url 'update_absence_status' absence_id=request.id status='rejected' %}"
-                                           class="btn btn-sm btn-danger {% if request.status == 'rejected' %}disabled{% endif %}"
-                                           {% if request.status == 'rejected' %}aria-disabled="true"{% endif %}>Refuser</a>
-                                    </td>
-                                </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+                                        {% for num in autorisations.paginator.page_range %}
+                                            <li class="page-item {% if autorisations.number == num %}active{% endif %}">
+                                                <a class="page-link" href="?autorisation_page={{ num }}{% if status %}&status={{ status }}{% endif %}{% if start_date_from %}&start_date_from={{ start_date_from }}{% endif %}{% if start_date_to %}&start_date_to={{ start_date_to }}{% endif %}">
+                                                    {{ num }}
+                                                </a>
+                                            </li>
+                                        {% endfor %}
+                                        {% if autorisations.has_next %}
+                                            <li class="page-item">
+                                                <a class="page-link" href="?autorisation_page={{ autorisations.next_page_number }}{% if status %}&status={{ status }}{% endif %}{% if start_date_from %}&start_date_from={{ start_date_from }}{% endif %}{% if start_date_to %}&start_date_to={{ start_date_to }}{% endif %}" aria-label="Next">
+                                                    <span aria-hidden="true">»</span>
+                                                </a>
+                                            </li>
+                                        {% else %}
+                                            <li class="page-item disabled"><span class="page-link">»</span></li>
+                                        {% endif %}
+                                    </ul>
+                                    <p class="text-muted text-end mt-2">{{ autorisations.start_index }}-{{ autorisations.end_index }} de {{ autorisations.paginator.count }}</p>
+                                </nav>
+                            {% else %}
+                                <p class="text-center">Aucune demande d'autorisation trouvée.</p>
+                            {% endif %}
+                        </div>
+                    </div>
                 </div>
-                <nav aria-label="Page navigation">
-                    <ul class="pagination justify-content-end mt-3">
-                        {% if absence_requests.has_previous %}
-                            <li class="page-item">
-                                <a class="page-link" href="?absence_page={{ absence_requests.previous_page_number }}{% if type_absence %}&type_absence={{ type_absence }}{% endif %}{% if status %}&status={{ status }}{% endif %}{% if start_date_from %}&start_date_from={{ start_date_from }}{% endif %}{% if start_date_to %}&start_date_to={{ start_date_to }}{% endif %}{% if end_date_from %}&end_date_from={{ end_date_from }}{% endif %}{% if end_date_to %}&end_date_to={{ end_date_to }}{% endif %}" aria-label="Previous">
-                                    <span aria-hidden="true">«</span>
-                                </a>
-                            </li>
-                        {% else %}
-                            <li class="page-item disabled"><span class="page-link">«</span></li>
-                        {% endif %}
-                        {% for num in absence_requests.paginator.page_range %}
-                            <li class="page-item {% if absence_requests.number == num %}active{% endif %}">
-                                <a class="page-link" href="?absence_page={{ num }}{% if type_absence %}&type_absence={{ type_absence }}{% endif %}{% if status %}&status={{ status }}{% endif %}{% if start_date_from %}&start_date_from={{ start_date_from }}{% endif %}{% if start_date_to %}&start_date_to={{ start_date_to }}{% endif %}{% if end_date_from %}&end_date_from={{ end_date_from }}{% endif %}{% if end_date_to %}&end_date_to={{ end_date_to }}{% endif %}">
-                                    {{ num }}
-                                </a>
-                            </li>
-                        {% endfor %}
-                        {% if absence_requests.has_next %}
-                            <li class="page-item">
-                                <a class="page-link" href="?absence_page={{ absence_requests.next_page_number }}{% if type_absence %}&type_absence={{ type_absence }}{% endif %}{% if status %}&status={{ status }}{% endif %}{% if start_date_from %}&start_date_from={{ start_date_from }}{% endif %}{% if start_date_to %}&start_date_to={{ start_date_to }}{% endif %}{% if end_date_from %}&end_date_from={{ end_date_from }}{% endif %}{% if end_date_to %}&end_date_to={{ end_date_to }}{% endif %}" aria-label="Next">
-                                    <span aria-hidden="true">»</span>
-                                </a>
-                            </li>
-                        {% else %}
-                            <li class="page-item disabled"><span class="page-link">»</span></li>
-                        {% endif %}
-                    </ul>
-                    <p class="text-muted text-end mt-2">{{ absence_requests.start_index }}-{{ absence_requests.end_index }} de {{ absence_requests.paginator.count }}</p>
-                </nav>
-            {% else %}
-                <p class="text-center">Aucune demande d'absence trouvée.</p>
-            {% endif %}
-        </div>
-    </div>
-</div>
 
-                <div class="tab-pane fade" id="historique">
-                    <!-- Carte pour le filtre de recherche -->
+                <!-- Onglet Pointage -->
+                <div class="tab-pane fade {% if request.GET.tab == 'pointage' %}show active{% endif %}" id="pointage">
+                    <!-- Formulaire pour ajouter/modifier une entreprise -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="card-title mb-0">Ajouter/Modifier une entreprise</h5>
+                        </div>
+                        <div class="card-body">
+                            <form method="post">
+                                {% csrf_token %}
+                                <input type="hidden" name="societe_id" id="societe_id">
+                                <div class="mb-3">
+                                    <label for="nom_societe" class="form-label">Nom de l'entreprise</label>
+                                    <input type="text" class="form-control" id="nom_societe" name="nom" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="adresse_societe" class="form-label">Adresse</label>
+                                    <textarea class="form-control" id="adresse_societe" name="adresse" required></textarea>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="latitude_societe" class="form-label">Latitude</label>
+                                        <input type="number" step="any" class="form-control" id="latitude_societe" name="latitude" placeholder="ex: 48.8566">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="longitude_societe" class="form-label">Longitude</label>
+                                        <input type="number" step="any" class="form-control" id="longitude_societe" name="longitude" placeholder="ex: 2.3522">
+                                    </div>
+                                </div>
+                                <div class="text-end">
+                                    <button type="submit" name="update_societe" class="btn btn-primary">Mettre à jour</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Liste des entreprises -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-dark-teal text-white">
+                            <h5 class="card-title mb-0">Liste des entreprises</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-bordered">
+                                    <thead>
+                                        <tr>
+                                            <th>Nom</th>
+                                            <th>Adresse</th>
+                                            <th>Latitude</th>
+                                            <th>Longitude</th>
+                                            <th>Modifié par</th>
+                                            <th>Date de modification</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for societe in societes %}
+                                            <tr>
+                                                <td>{{ societe.nom }}</td>
+                                                <td>{{ societe.adresse }}</td>
+                                                <td>{{ societe.latitude|default:"N/A" }}</td>
+                                                <td>{{ societe.longitude|default:"N/A" }}</td>
+                                                <td>{{ societe.modified_by.username|default:"N/A" }}</td>
+                                                <td>{{ societe.date_maj|date:"Y-m-d H:i" }}</td>
+                                                <td>
+                                                    <button class="btn btn-sm btn-warning edit-societe"
+                                                            data-id="{{ societe.id }}"
+                                                            data-nom="{{ societe.nom }}"
+                                                            data-adresse="{{ societe.adresse }}"
+                                                            data-latitude="{{ societe.latitude|default:'' }}"
+                                                            data-longitude="{{ societe.longitude|default:'' }}">Modifier</button>
+                                                </td>
+                                            </tr>
+                                        {% empty %}
+                                            <tr>
+                                                <td colspan="7">Aucune entreprise enregistrée.</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Formulaire pour ajouter/modifier un employé -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="card-title mb-0">Ajouter/Modifier un employé</h5>
+                        </div>
+                        <div class="card-body">
+                            <form method="post">
+                                {% csrf_token %}
+                                <input type="hidden" name="employee_id" id="employee_id">
+                                <div class="mb-3">
+                                    <label for="username" class="form-label">Nom d'utilisateur</label>
+                                    <input type="text" class="form-control" id="username" name="username" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="nom" class="form-label">Nom</label>
+                                    <input type="text" class="form-control" id="nom" name="nom" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="prenom" class="form-label">Prénom</label>
+                                    <input type="text" class="form-control" id="prenom" name="prenom" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="telephone" class="form-label">Téléphone</label>
+                                    <input type="text" class="form-control" id="telephone" name="telephone" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="adresse" class="form-label">Adresse</label>
+                                    <textarea class="form-control" id="adresse" name="adresse" required></textarea>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="societe" class="form-label">Entreprise</label>
+                                    <select class="form-select" id="societe" name="societe" required>
+                                        <option value="">-- Sélectionner --</option>
+                                        {% for societe in societes %}
+                                            <option value="{{ societe.id }}">{{ societe.nom }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="latitude" class="form-label">Latitude</label>
+                                        <input type="number" step="any" class="form-control" id="latitude" name="latitude" placeholder="ex: 48.8566">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="longitude" class="form-label">Longitude</label>
+                                        <input type="number" step="any" class="form-control" id="longitude" name="longitude" placeholder="ex: 2.3522">
+                                    </div>
+                                </div>
+                                <div class="text-end">
+                                    <button type="submit" name="update_employee" class="btn btn-primary">Mettre à jour</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Liste des employés -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-dark-teal text-white">
+                            <h5 class="card-title mb-0">Liste des employés</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-bordered">
+                                    <thead>
+                                        <tr>
+                                            <th>Nom d'utilisateur</th>
+                                            <th>Nom</th>
+                                            <th>Prénom</th>
+                                            <th>Entreprise</th>
+                                            <th>Latitude</th>
+                                            <th>Longitude</th>
+                                            <th>Modifié par</th>
+                                            <th>Date de modification</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for employee in employees %}
+                                            <tr>
+                                                <td>{{ employee.username }}</td>
+                                                <td>{{ employee.profil.nom }}</td>
+                                                <td>{{ employee.profil.prenom }}</td>
+                                                <td>{{ employee.profil.societe.nom|default:"N/A" }}</td>
+                                                <td>{{ employee.profil.latitude|default:"N/A" }}</td>
+                                                <td>{{ employee.profil.longitude|default:"N/A" }}</td>
+                                                <td>{{ employee.profil.modified_by.username|default:"N/A" }}</td>
+                                                <td>{{ employee.profil.date_maj|date:"Y-m-d H:i" }}</td>
+                                                <td>
+                                                    <button class="btn btn-sm btn-warning edit-employee"
+                                                            data-id="{{ employee.id }}"
+                                                            data-username="{{ employee.username }}"
+                                                            data-nom="{{ employee.profil.nom }}"
+                                                            data-prenom="{{ employee.profil.prenom }}"
+                                                            data-telephone="{{ employee.profil.telephone }}"
+                                                            data-adresse="{{ employee.profil.adresse }}"
+                                                            data-societe="{{ employee.profil.societe.id|default:'' }}"
+                                                            data-latitude="{{ employee.profil.latitude|default:'' }}"
+                                                            data-longitude="{{ employee.profil.longitude|default:'' }}">Modifier</button>
+                                                </td>
+                                            </tr>
+                                        {% empty %}
+                                            <tr>
+                                                <td colspan="9">Aucun employé enregistré.</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Liste des pointages -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-dark-teal text-white">
+                            <h5 class="card-title mb-0">Pointages</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-striped table-bordered">
+                                    <thead>
+                                        <tr>
+                                            <th>Utilisateur</th>
+                                            <th>Date</th>
+                                            <th>Heure d'entrée</th>
+                                            <th>Heure de sortie</th>
+                                            <th>Localisation</th>
+                                            <th>État</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for pointage in pointages %}
+                                            <tr>
+                                                <td>{{ pointage.employe.username }}</td>
+                                                <td>{{ pointage.date }}</td>
+                                                <td>{{ pointage.heure_entree|time:"H:i:s"|default:"Non pointé" }}</td>
+                                                <td>{{ pointage.heure_sortie|time:"H:i:s"|default:"Non pointé" }}</td>
+                                                <td>{{ pointage.latitude|default:"N/A" }}, {{ pointage.longitude|default:"N/A" }}</td>
+                                                <td>{{ pointage.est_valide|yesno:"Validé,Refusé" }}</td>
+                                            </tr>
+                                        {% empty %}
+                                            <tr>
+                                                <td colspan="6" class="text-center">Aucun pointage trouvé.</td>
+                                            </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Onglet Absence (inchangé) -->
+                <div class="tab-pane fade {% if request.GET.tab == 'absence' %}show active{% endif %}" id="absence">
+                    <div class="card mb-4">
+                        <div class="card-header bg-primary text-white">
+                            <h5 class="card-title mb-0">Filtre de recherche</h5>
+                        </div>
+                        <div class="card-body">
+                            <form method="get">
+                                <div class="row">
+                                    <div class="col-md-3 mb-3">
+                                        <label for="type_absence_filter" class="form-label">Type d'absence</label>
+                                        <select class="form-select" id="type_absence_filter" name="type_absence">
+                                            <option value="">Tous</option>
+                                            {% for type in types_absence %}
+                                                <option value="{{ type.id }}" {% if type_absence == type.id|stringformat:"s" %}selected{% endif %}>{{ type.type }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="status_filter" class="form-label">État demande</label>
+                                        <select class="form-select" id="status_filter" name="status">
+                                            <option value="">Tous</option>
+                                            {% for value, label in status_choices %}
+                                                <option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="start_date_from" class="form-label">Date Début (Du)</label>
+                                        <input type="date" class="form-control" id="start_date_from" name="start_date_from" value="{{ start_date_from }}">
+                                    </div>
+                                    <div class="col-md-3 mb-3">
+                                        <label for="end_date_to" class="form-label">Date Fin (Au)</label>
+                                        <input type="date" class="form-control" id="end_date_to" name="end_date_to" value="{{ end_date_to }}">
+                                    </div>
+                                    <div class="col-md-6 mb-3 d-flex align-items-end justify-content-end">
+                                        <button type="submit" class="btn btn-primary me-2"><i class="bi bi-search me-2"></i>Rechercher</button>
+                                        <a href="{% url 'responsable_rh_dashboard' %}#absence" class="btn btn-outline-danger"><i class="bi bi-arrow-clockwise me-2"></i>Réinitialiser</a>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header bg-dark-teal text-red d-flex justify-content-between align-items-center">
+                            <h5 class="card-title mb-0">Liste des demandes d'absence</h5>
+                            <div class="filter-input">
+                                <input type="text" class="form-control" placeholder="Filtrer parmi ces éléments..." id="filterInputAbsences" onkeyup="filterTable('filterInputAbsences', 'absencesTable')">
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <p>Nombre de demandes : {{ absence_requests.paginator.count }}</p>
+                            {% if absence_requests %}
+                                <div class="table-responsive">
+                                    <table class="table custom-table" id="absencesTable">
+                                        <thead class="bg-dark-teal text-white">
+                                            <tr>
+                                                <th>Employé</th>
+                                                <th>Type d'absence</th>
+                                                <th>Date de début</th>
+                                                <th>Date de fin</th>
+                                                <th>Raison</th>
+                                                <th>Statut</th>
+                                                <th>Image</th>
+                                                <th>Date de création</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for request in absence_requests %}
+                                                <tr>
+                                                    <td>{{ request.employee.username }}</td>
+                                                    <td>{{ request.type_absence.type }}</td>
+                                                    <td>{{ request.start_date|date:"Y-m-d" }}</td>
+                                                    <td>{{ request.end_date|date:"Y-m-d" }}</td>
+                                                    <td>{{ request.reason }}</td>
+                                                    <td>
+                                                        <span class="badge {% if request.status == 'pending' %}bg-warning text-dark{% elif request.status == 'approved' %}bg-success text-white{% elif request.status == 'rejected' %}bg-danger text-white{% endif %}">
+                                                            {{ request.status|capfirst }}
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        {% if request.image %}
+                                                            <a href="{{ request.image.url }}" target="_blank">
+                                                                <img src="{{ request.image.url }}" alt="Justificatif" style="max-width: 100px;">
+                                                            </a>
+                                                        {% else %}
+                                                            Aucune image
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>{{ request.created_at|date:"Y-m-d H:i" }}</td>
+                                                    <td>
+                                                        <a href="{% url 'update_absence_status' absence_id=request.id status='approved' %}"
+                                                           class="btn btn-sm btn-success me-1 {% if request.status == 'approved' %}disabled{% endif %}"
+                                                           {% if request.status == 'approved' %}aria-disabled="true"{% endif %}>Accepter</a>
+                                                        <a href="{% url 'update_absence_status' absence_id=request.id status='rejected' %}"
+                                                           class="btn btn-sm btn-danger {% if request.status == 'rejected' %}disabled{% endif %}"
+                                                           {% if request.status == 'rejected' %}aria-disabled="true"{% endif %}>Refuser</a>
+                                                    </td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <nav aria-label="Page navigation">
+                                    <ul class="pagination justify-content-end mt-3">
+                                        {% if absence_requests.has_previous %}
+                                            <li class="page-item">
+                                                <a class="page-link" href="?absence_page={{ absence_requests.previous_page_number }}{% if type_absence %}&type_absence={{ type_absence }}{% endif %}{% if status %}&status={{ status }}{% endif %}{% if start_date_from %}&start_date_from={{ start_date_from }}{% endif %}{% if start_date_to %}&start_date_to={{ start_date_to }}{% endif %}{% if end_date_from %}&end_date_from={{ end_date_from }}{% endif %}{% if end_date_to %}&end_date_to={{ end_date_to }}{% endif %}" aria-label="Previous">
+                                                    <span aria-hidden="true">«</span>
+                                                </a>
+                                            </li>
+                                        {% else %}
+                                            <li class="page-item disabled"><span class="page-link">«</span></li>
+                                        {% endif %}
+                                        {% for num in absence_requests.paginator.page_range %}
+                                            <li class="page-item {% if absence_requests.number == num %}active{% endif %}">
+                                                <a class="page-link" href="?absence_page={{ num }}{% if type_absence %}&type_absence={{ type_absence }}{% endif %}{% if status %}&status={{ status }}{% endif %}{% if start_date_from %}&start_date_from={{ start_date_from }}{% endif %}{% if start_date_to %}&start_date_to={{ start_date_to }}{% endif %}{% if end_date_from %}&end_date_from={{ end_date_from }}{% endif %}{% if end_date_to %}&end_date_to={{ end_date_to }}{% endif %}">
+                                                    {{ num }}
+                                                </a>
+                                            </li>
+                                        {% endfor %}
+                                        {% if absence_requests.has_next %}
+                                            <li class="page-item">
+                                                <a class="page-link" href="?absence_page={{ absence_requests.next_page_number }}{% if type_absence %}&type_absence={{ type_absence }}{% endif %}{% if status %}&status={{ status }}{% endif %}{% if start_date_from %}&start_date_from={{ start_date_from }}{% endif %}{% if start_date_to %}&start_date_to={{ start_date_to }}{% endif %}{% if end_date_from %}&end_date_from={{ end_date_from }}{% endif %}{% if end_date_to %}&end_date_to={{ end_date_to }}{% endif %}" aria-label="Next">
+                                                    <span aria-hidden="true">»</span>
+                                                </a>
+                                            </li>
+                                        {% else %}
+                                            <li class="page-item disabled"><span class="page-link">»</span></li>
+                                        {% endif %}
+                                    </ul>
+                                    <p class="text-muted text-end mt-2">{{ absence_requests.start_index }}-{{ absence_requests.end_index }} de {{ absence_requests.paginator.count }}</p>
+                                </nav>
+                            {% else %}
+                                <p class="text-center">Aucune demande d'absence trouvée.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Onglet Historique (inchangé) -->
+                <div class="tab-pane fade {% if request.GET.tab == 'historique' %}show active{% endif %}" id="historique">
                     <div class="card mb-4">
                         <div class="card-header bg-primary text-white">
                             <h5 class="card-title mb-0">Filtre de l'historique</h5>
@@ -621,8 +715,6 @@
                             </form>
                         </div>
                     </div>
-
-                    <!-- Carte pour l'historique de connexion -->
                     <div class="card">
                         <div class="card-header bg-primary text-white">
                             <h5 class="card-title mb-0">Historique de connexion</h5>
@@ -756,6 +848,14 @@
         background-color: #218838;
         border-color: #218838;
     }
+    .btn-warning {
+        background-color: #ffc107;
+        border-color: #ffc107;
+    }
+    .btn-warning:hover {
+        background-color: #e0a800;
+        border-color: #e0a800;
+    }
     .btn-outline-danger {
         color: #e74c3c;
         border-color: #e74c3c;
@@ -808,14 +908,14 @@
         overflow: hidden;
         text-overflow: ellipsis;
     }
-    .custom-table th:nth-child(1), .custom-table td:nth-child(1) { max-width: 120px; } /* Employé */
-    .custom-table th:nth-child(2), .custom-table td:nth-child(2) { max-width: 150px; } /* Type de congé */
-    .custom-table th:nth-child(3), .custom-table td:nth-child(3) { max-width: 120px; } /* Date de début */
-    .custom-table th:nth-child(4), .custom-table td:nth-child(4) { max-width: 120px; } /* Date de fin */
-    .custom-table th:nth-child(5), .custom-table td:nth-child(5) { max-width: 150px; } /* Raison */
-    .custom-table th:nth-child(6), .custom-table td:nth-child(6) { max-width: 100px; } /* Statut */
-    .custom-table th:nth-child(7), .custom-table td:nth-child(7) { max-width: 150px; } /* Date de création */
-    .custom-table th:nth-child(8), .custom-table td:nth-child(8) { max-width: 150px; } /* Actions */
+    .custom-table th:nth-child(1), .custom-table td:nth-child(1) { max-width: 120px; }
+    .custom-table th:nth-child(2), .custom-table td:nth-child(2) { max-width: 150px; }
+    .custom-table th:nth-child(3), .custom-table td:nth-child(3) { max-width: 120px; }
+    .custom-table th:nth-child(4), .custom-table td:nth-child(4) { max-width: 120px; }
+    .custom-table th:nth-child(5), .custom-table td:nth-child(5) { max-width: 150px; }
+    .custom-table th:nth-child(6), .custom-table td:nth-child(6) { max-width: 100px; }
+    .custom-table th:nth-child(7), .custom-table td:nth-child(7) { max-width: 150px; }
+    .custom-table th:nth-child(8), .custom-table td:nth-child(8) { max-width: 150px; }
     .custom-table thead th {
         border-bottom: 2px solid #000000 !important;
     }
@@ -825,7 +925,6 @@
     .custom-table tbody tr:nth-child(even) {
         background-color: #ffffff;
     }
-    /* Responsive table */
     .table-responsive {
         overflow-x: auto;
     }
@@ -843,8 +942,6 @@
         opacity: 0.5;
         pointer-events: none;
     }
-
-    /* Ajustement pour éviter les marges indésirables */
     .card-body {
         padding-bottom: 0;
     }
@@ -852,112 +949,106 @@
 {% endblock %}
 
 {% block extra_js %}
-
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        function filterTable(inputId, tableId) {
-            var input = document.getElementById(inputId);
-            var filter = input.value.toLowerCase();
-            var table = document.getElementById(tableId);
-            var tr = table ? table.getElementsByTagName("tr") : [];
+document.addEventListener('DOMContentLoaded', function() {
+    // Filtrage des tableaux
+    function filterTable(inputId, tableId) {
+        const input = document.getElementById(inputId);
+        const filter = input.value.toLowerCase();
+        const table = document.getElementById(tableId);
+        const tr = table ? table.getElementsByTagName("tr") : [];
 
-            if (!table) {
-                console.warn("Aucun tableau trouvé pour ID: " + tableId + ", filtrage ignoré.");
-                return;
-            }
-
-            for (var i = 1; i < tr.length; i++) {
-                var found = false;
-                var td = tr[i].getElementsByTagName("td");
-                for (var j = 0; j < td.length; j++) {
-                    var cell = td[j];
-                    if (cell) {
-                        if (cell.textContent.toLowerCase().indexOf(filter) > -1) {
-                            found = true;
-                            break;
-                        }
-                    }
-                }
-                tr[i].style.display = found ? "" : "none";
-            }
-        }
-
-        var inputLeaves = document.getElementById("filterInputLeaves");
-        if (inputLeaves) {
-            inputLeaves.addEventListener("keyup", function() {
-                filterTable('filterInputLeaves', 'leavesTable');
-            });
-        }
-    });
-        document.addEventListener('DOMContentLoaded', function() {
-        // Gestion du bouton pour afficher/masquer la carte
-        const toggleButton = document.getElementById('toggleAddType');
-        const addTypeCard = document.getElementById('addTypeCard');
-        const cancelButton = document.getElementById('cancelAddType');
-
-        if (!toggleButton || !addTypeCard || !cancelButton) {
-            console.error('Un ou plusieurs éléments du DOM sont introuvables : ', {
-                toggleButton: !!toggleButton,
-                addTypeCard: !!addTypeCard,
-                cancelButton: !!cancelButton
-            });
+        if (!table) {
+            console.warn("Aucun tableau trouvé pour ID: " + tableId + ", filtrage ignoré.");
             return;
         }
 
-        toggleButton.addEventListener('click', function() {
-            if (addTypeCard.style.display === 'none') {
-                addTypeCard.style.display = 'block';
-                toggleButton.textContent = 'Masquer l’ajout';
-            } else {
-                addTypeCard.style.display = 'none';
-                toggleButton.textContent = 'Ajouter un type de congé';
+        for (let i = 1; i < tr.length; i++) {
+            let found = false;
+            const td = tr[i].getElementsByTagName("td");
+            for (let j = 0; j < td.length; j++) {
+                const cell = td[j];
+                if (cell && cell.textContent.toLowerCase().indexOf(filter) > -1) {
+                    found = true;
+                    break;
+                }
             }
+            tr[i].style.display = found ? "" : "none";
+        }
+    }
+
+    const inputLeaves = document.getElementById("filterInputLeaves");
+    if (inputLeaves) {
+        inputLeaves.addEventListener("keyup", function() {
+            filterTable('filterInputLeaves', 'leavesTable');
+        });
+    }
+
+    const inputAbsences = document.getElementById("filterInputAbsences");
+    if (inputAbsences) {
+        inputAbsences.addEventListener("keyup", function() {
+            filterTable('filterInputAbsences', 'absencesTable');
+        });
+    }
+
+    // Gestion du bouton pour ajouter un type de congé
+    const toggleButton = document.getElementById('toggleAddType');
+    const addTypeCard = document.getElementById('addTypeCard');
+    const cancelButton = document.getElementById('cancelAddType');
+
+    if (toggleButton && addTypeCard && cancelButton) {
+        toggleButton.addEventListener('click', function() {
+            addTypeCard.style.display = addTypeCard.style.display === 'none' ? 'block' : 'none';
+            toggleButton.textContent = addTypeCard.style.display === 'block' ? 'Masquer l’ajout' : 'Ajouter un type de congé';
         });
 
         cancelButton.addEventListener('click', function() {
             addTypeCard.style.display = 'none';
             toggleButton.textContent = 'Ajouter un type de congé';
         });
+    }
 
-        // Filtrage des tableaux
-        function filterTable(inputId, tableId) {
-            const input = document.getElementById(inputId);
-            const filter = input.value.toLowerCase();
-            const table = document.getElementById(tableId);
-            const tr = table ? table.getElementsByTagName("tr") : [];
+    // Gestion de l'édition des entreprises
+    document.querySelectorAll('.edit-societe').forEach(button => {
+        button.addEventListener('click', function() {
+            const id = this.getAttribute('data-id');
+            const nom = this.getAttribute('data-nom');
+            const adresse = this.getAttribute('data-adresse');
+            const latitude = this.getAttribute('data-latitude');
+            const longitude = this.getAttribute('data-longitude');
 
-            if (!table) {
-                console.warn("Aucun tableau trouvé pour ID: " + tableId + ", filtrage ignoré.");
-                return;
-            }
-
-            for (let i = 1; i < tr.length; i++) {
-                let found = false;
-                const td = tr[i].getElementsByTagName("td");
-                for (let j = 0; j < td.length; j++) {
-                    const cell = td[j];
-                    if (cell && cell.textContent.toLowerCase().indexOf(filter) > -1) {
-                        found = true;
-                        break;
-                    }
-                }
-                tr[i].style.display = found ? "" : "none";
-            }
-        }
-
-        const inputLeaves = document.getElementById("filterInputLeaves");
-        if (inputLeaves) {
-            inputLeaves.addEventListener("keyup", function() {
-                filterTable('filterInputLeaves', 'leavesTable');
-            });
-        }
-
-        const inputAbsences = document.getElementById("filterInputAbsences");
-        if (inputAbsences) {
-            inputAbsences.addEventListener("keyup", function() {
-                filterTable('filterInputAbsences', 'absencesTable');
-            });
-        }
+            document.getElementById('societe_id').value = id;
+            document.getElementById('nom_societe').value = nom;
+            document.getElementById('adresse_societe').value = adresse;
+            document.getElementById('latitude_societe').value = latitude;
+            document.getElementById('longitude_societe').value = longitude;
+        });
     });
+
+    // Gestion de l'édition des employés
+    document.querySelectorAll('.edit-employee').forEach(button => {
+        button.addEventListener('click', function() {
+            const id = this.getAttribute('data-id');
+            const username = this.getAttribute('data-username');
+            const nom = this.getAttribute('data-nom');
+            const prenom = this.getAttribute('data-prenom');
+            const telephone = this.getAttribute('data-telephone');
+            const adresse = this.getAttribute('data-adresse');
+            const societe = this.getAttribute('data-societe');
+            const latitude = this.getAttribute('data-latitude');
+            const longitude = this.getAttribute('data-longitude');
+
+            document.getElementById('employee_id').value = id;
+            document.getElementById('username').value = username;
+            document.getElementById('nom').value = nom;
+            document.getElementById('prenom').value = prenom;
+            document.getElementById('telephone').value = telephone;
+            document.getElementById('adresse').value = adresse;
+            document.getElementById('societe').value = societe;
+            document.getElementById('latitude').value = latitude;
+            document.getElementById('longitude').value = longitude;
+        });
+    });
+});
 </script>
 {% endblock %}
