@@ -140,16 +140,7 @@
                     <div class="card mb-4">
                         <div class="card-header">Définir la localisation de la société</div>
                         <div class="card-body">
-                            <form method="post">
-                                {% csrf_token %}
-                                <div class="mb-3">
-                                    <label for="location_societe" class="form-label">Localisation de la société (Latitude, Longitude)</label>
-                                    <input type="text" class="form-control" id="location_societe" name="location_societe" placeholder="ex: 48.8566,2.3522" value="{% if societe %}{{ societe.location_societe }}{% endif %}" required>
-                                </div>
-                                <div class="text-end">
-                                    <button type="submit" name="update_location" class="btn btn-primary">Ajouter / Mettre à jour</button>
-                                </div>
-                            </form>
+
                         </div>
                     </div>
                     {% else %}

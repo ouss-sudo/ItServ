@@ -2,6 +2,21 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils.timezone import now
 
+class Societe(models.Model):
+    nom = models.CharField(max_length=255)
+    adresse = models.CharField(max_length=255, blank=True, null=True)
+    location_societe = models.CharField(max_length=100, blank=True, null=True)  # Format: "latitude,longitude"
+    rayon_acceptable = models.FloatField(default=100.0)  # Rayon en mètres
+    employee_limit = models.PositiveIntegerField(default=10, verbose_name="Limite d'employés")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+    def __str__(self):
+        return self.nom
+    def employee_count(self):
+        return self.profil_set.filter(poste='EMPLOYE').count()
 class Profil(models.Model):
     POSTE_CHOICES = [
         ('EMPLOYE', 'Employé'),
@@ -18,6 +33,13 @@ class Profil(models.Model):
     must_change_password = models.BooleanField(default=True)
     first_login = models.DateTimeField(null=True, blank=True)  # Champ existant pour la première connexion
     last_authentication = models.DateTimeField(null=True, blank=True)  # Nouveau champ pour la dernière authentification
+    societe = models.ForeignKey(
+        Societe,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Entreprise"
+    )
     # Ajout des champs de suivi
     date_creation = models.DateTimeField(default=now)  # Use default instead of auto_now_add
     date_maj = models.DateTimeField(auto_now=True)  # Date de la dernière modification
@@ -101,16 +123,7 @@ class Absence(models.Model):
     def __str__(self):
         return f"{self.employee.username} - {self.type_absence.type} - {self.start_date}"
 
-class Societe(models.Model):
-    nom = models.CharField(max_length=255)
-    adresse = models.CharField(max_length=255, blank=True, null=True)
-    location_societe = models.CharField(max_length=100, blank=True, null=True)  # Format: "latitude,longitude"
-    rayon_acceptable = models.FloatField(default=100.0)  # Rayon en mètres
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
-    def __str__(self):
-        return self.nom
 
 class Pointage(models.Model):
     employe = models.ForeignKey(User, on_delete=models.CASCADE, related_name='pointages', verbose_name="Employé")

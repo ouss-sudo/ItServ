@@ -5,7 +5,10 @@ from django.contrib.auth.models import User
 from .models import Autorisation,Societe
 from sklearn.cluster import KMeans
 import json
+from django.db.models import Count, Q  # Added Count and Q imports
+
 from math import radians, sin, cos, sqrt, atan2
+from itServ.forms import SocieteForm
 
 from django.views.decorators.cache import never_cache
 from transformers import pipeline
@@ -640,7 +643,10 @@ class SignupView(View):
 
     @method_decorator(csrf_protect)
     def get(self, request):
-        return render(request, self.template_name)
+        context = {
+            'societes': Societe.objects.all()
+        }
+        return render(request, self.template_name, context)
 
     @method_decorator(csrf_protect)
     def post(self, request):
@@ -651,17 +657,83 @@ class SignupView(View):
         adresse = request.POST.get('adresse')
         poste = request.POST.get('poste')
         username = request.POST.get('username')
-       # alphabet = string.ascii_lowercase + string.digits
+        societe_nom = request.POST.get('societe')
+        employee_limit = request.POST.get('employee_limit')
 
-       # while User.objects.filter(username=username).exists():
-      #      username = ''.join(secrets.choice(alphabet) for _ in range(8))
-
+        # Generate a secure password
         alphabet = string.ascii_letters + string.digits + string.punctuation
         password = ''.join(secrets.choice(alphabet) for _ in range(12))
 
         logger.info(f"Tentative de création de compte pour {username} ({email})")
 
         try:
+            # Validate required fields
+            if not all([email, nom, prenom, tel, adresse, poste, username, societe_nom]):
+                messages.error(request, "Veuillez remplir tous les champs obligatoires.")
+                return render(request, self.template_name, {
+                    'societes': Societe.objects.all(),
+                    'form_data': request.POST
+                })
+
+            # Validate employee_limit for ResponsableRH creating new Societe
+            if poste == "ResponsableRH" and not Societe.objects.filter(nom__iexact=societe_nom).exists():
+                if not employee_limit:
+                    messages.error(request, "Veuillez spécifier la limite d'employés pour la nouvelle société.")
+                    return render(request, self.template_name, {
+                        'societes': Societe.objects.all(),
+                        'form_data': request.POST
+                    })
+                try:
+                    employee_limit = int(employee_limit)
+                    if employee_limit < 1:
+                        messages.error(request, "La limite d'employés doit être un nombre positif.")
+                        return render(request, self.template_name, {
+                            'societes': Societe.objects.all(),
+                            'form_data': request.POST
+                        })
+                except ValueError:
+                    messages.error(request, "La limite d'employés doit être un nombre valide.")
+                    return render(request, self.template_name, {
+                        'societes': Societe.objects.all(),
+                        'form_data': request.POST
+                    })
+
+            # Check if username or email already exists
+            if User.objects.filter(username=username).exists():
+                messages.error(request, "Ce nom d'utilisateur est déjà pris.")
+                return render(request, self.template_name, {
+                    'societes': Societe.objects.all(),
+                    'form_data': request.POST
+                })
+
+
+
+            # Create or get Societe
+            societe, created = Societe.objects.get_or_create(
+                nom__iexact=societe_nom,
+                defaults={
+                    'nom': societe_nom,
+                    'adresse': '',
+                    'employee_limit': employee_limit if poste == "ResponsableRH" and employee_limit else 10
+                }
+            )
+            if created:
+                logger.info(f"Nouvelle société créée : {societe_nom} avec limite d'employés : {societe.employee_limit}")
+
+            # Check employee limit for EMPLOYE role
+            if poste == "EMPLOYE":
+                current_employees = Profil.objects.filter(societe=societe, poste="EMPLOYE").count()
+                if current_employees >= societe.employee_limit:
+                    messages.error(
+                        request,
+                        f"La limite d'employés ({societe.employee_limit}) pour la société {societe.nom} a été atteinte."
+                    )
+                    return render(request, self.template_name, {
+                        'societes': Societe.objects.all(),
+                        'form_data': request.POST
+                    })
+
+            # Create User and Profil
             user = User.objects.create_user(username=username, email=email, password=password)
             Profil.objects.create(
                 user=user,
@@ -670,15 +742,18 @@ class SignupView(View):
                 telephone=tel,
                 adresse=adresse,
                 poste=poste,
-                must_change_password=True  # Déjà True par défaut, mais explicite pour clarté
+                societe=societe,
+                must_change_password=True
             )
 
+            # Send welcome email
             subject = "Bienvenue - Vos identifiants de connexion"
             message = (
                 f"Bonjour {prenom} {nom},\n\n"
                 f"Votre compte a été créé avec succès. Voici vos identifiants :\n"
                 f"Nom d'utilisateur : {username}\n"
                 f"Mot de passe : {password}\n\n"
+                f"Société : {societe.nom}\n"
                 f"Veuillez vous connecter à : http://127.0.0.1:8000/login/\n"
                 f"Vous devrez changer votre mot de passe lors de votre première connexion.\n\n"
                 f"Cordialement,\nL'équipe ITserv"
@@ -692,7 +767,10 @@ class SignupView(View):
             except Exception as e:
                 logger.error(f"Échec de l'envoi de l'email à {email} : {str(e)}")
                 messages.error(request, f"Erreur lors de l'envoi de l'email : {str(e)}")
-                return render(request, self.template_name)
+                return render(request, self.template_name, {
+                    'societes': Societe.objects.all(),
+                    'form_data': request.POST
+                })
 
             messages.success(request, "Inscription réussie ! Un email avec les identifiants a été envoyé.")
             return redirect('home')
@@ -700,7 +778,11 @@ class SignupView(View):
         except Exception as e:
             logger.error(f"Erreur lors de la création du compte : {str(e)}")
             messages.error(request, f"Une erreur s'est produite : {str(e)}")
-            return render(request, self.template_name)
+            return render(request, self.template_name, {
+                'societes': Societe.objects.all(),
+                'form_data': request.POST
+            })
+
 class LoginView(View):
     template_name = 'login.html'
 
@@ -997,6 +1079,10 @@ def list_profil(request):
         return render(request, "ITservBack/profil_list.html", context)
 
 
+
+
+logger = logging.getLogger(__name__)
+
 @login_required
 def responsable_rh_dashboard(request):
     try:
@@ -1008,100 +1094,373 @@ def responsable_rh_dashboard(request):
         messages.error(request, "Profil non trouvé.")
         return redirect('employee')
 
-    # Gestion du formulaire pour ajouter/modifier une entreprise
-    if request.method == 'POST' and 'update_societe' in request.POST:
-        societe_id = request.POST.get('societe_id')
-        nom = request.POST.get('nom')
-        adresse = request.POST.get('adresse')
-        latitude = request.POST.get('latitude')
-        longitude = request.POST.get('longitude')
-        try:
-            if societe_id:
-                societe = Societe.objects.get(id=societe_id)
-                societe.nom = nom
-                societe.adresse = adresse
-                societe.latitude = float(latitude) if latitude else None
-                societe.longitude = float(longitude) if longitude else None
-                societe.modified_by = request.user
-                societe.save()
-                messages.success(request, f"Entreprise {nom} mise à jour avec succès.")
-            else:
-                societe = Societe.objects.create(
-                    nom=nom,
-                    adresse=adresse,
-                    latitude=float(latitude) if latitude else None,
-                    longitude=float(longitude) if longitude else None,
-                    modified_by=request.user
-                )
-                messages.success(request, f"Entreprise {nom} ajoutée avec succès.")
-        except ValueError:
-            messages.error(request, "Format de localisation invalide. Veuillez entrer des valeurs numériques pour la latitude et la longitude.")
-        except Exception as e:
-            messages.error(request, f"Erreur lors de la gestion de l'entreprise : {str(e)}")
-        return redirect(f"{reverse('responsable_rh_dashboard')}#pointage")
+    # Check if this is the first login
+    show_societe_card = profil.first_login is None
 
-    # Gestion du formulaire pour ajouter/modifier un employé
-    if request.method == 'POST' and 'update_employee' in request.POST:
+    # Update first_login if this is the first login
+    if show_societe_card:
+        profil.first_login = timezone.now()
+        profil.save()
+
+    # Handle Societe form submission (Entreprise tab)
+    societe_form = SocieteForm(request.user, instance=profil.societe if profil.societe else None)
+    if request.method == 'POST' and 'update_societe' in request.POST:
+        societe_form = SocieteForm(request.user, request.POST, instance=profil.societe if profil.societe else None)
+        if societe_form.is_valid():
+            societe = societe_form.save()
+            profil.societe = societe
+            profil.save()
+            messages.success(request, "Entreprise enregistrée avec succès.")
+            logger.info(f"Entreprise {societe.nom} enregistrée par {request.user.username}")
+            return redirect(f"{reverse('responsable_rh_dashboard')}?tab=entreprise")
+        else:
+            messages.error(request, "Erreur dans le formulaire. Veuillez vérifier les champs.")
+            logger.warning(f"Erreur dans le formulaire Societe pour {request.user.username}: {societe_form.errors}")
+
+    # Handle employee form submission (Employé tab)
+    form_data = {}
+    if request.method == 'POST' and 'manage_employee' in request.POST:
         employee_id = request.POST.get('employee_id')
         username = request.POST.get('username')
+        email = request.POST.get('email')
         nom = request.POST.get('nom')
         prenom = request.POST.get('prenom')
         telephone = request.POST.get('telephone')
         adresse = request.POST.get('adresse')
         societe_id = request.POST.get('societe')
-        latitude = request.POST.get('latitude')
-        longitude = request.POST.get('longitude')
+
+
+        form_data = {
+            'username': username,
+            'email': email,
+            'nom': nom,
+            'prenom': prenom,
+            'telephone': telephone,
+            'adresse': adresse,
+            'societe': societe_id,
+
+        }
+
+        if not all([username, email, nom, prenom, telephone, adresse, societe_id]):
+            messages.error(request, "Veuillez remplir tous les champs obligatoires.")
+            return render(request, "ITservBack/dashboard_ResponsableRH.html", {
+                'form_data': form_data,
+                'societes': Societe.objects.all().annotate(employee_count=Count('profil', filter=Q(profil__poste='EMPLOYE'))),
+                'employees': User.objects.filter(profil__poste='EMPLOYE'),
+                'pointages': Pointage.objects.all().order_by('-date'),
+                'leave_requests': Conge.objects.all().order_by('-created_at'),
+                'absence_requests': Absence.objects.all().order_by('-created_at'),
+                'autorisations': Autorisation.objects.all().order_by('-created_at'),
+                'login_histories': UserLoginHistory.objects.all().order_by('user', '-login_time'),
+                'types_conge': TypeConge.objects.filter(flag_active=True),
+                'types_absence': TypeAbsence.objects.filter(flag_active=True),
+                'status_choices': Conge._meta.get_field('status').choices,
+                'societe': profil.societe,
+                'show_societe_card': show_societe_card,
+                'societe_form': societe_form,
+                'unread_notifications_count': request.user.notifications.filter(is_read=False).count(),
+            })
+
         try:
+            societe = Societe.objects.get(id=societe_id)
+
             if employee_id:
                 user = User.objects.get(id=employee_id)
-                profil = Profil.objects.get(user=user)
+                employee_profil = Profil.objects.get(user=user)
+                if User.objects.filter(username=username).exclude(id=user.id).exists():
+                    messages.error(request, "Ce nom d'utilisateur est déjà pris.")
+                    return render(request, "ITservBack/dashboard_ResponsableRH.html", {
+                        'form_data': form_data,
+                        'societes': Societe.objects.all().annotate(employee_count=Count('profil', filter=Q(profil__poste='EMPLOYE'))),
+                        'employees': User.objects.filter(profil__poste='EMPLOYE'),
+                        'pointages': Pointage.objects.all().order_by('-date'),
+                        'leave_requests': Conge.objects.all().order_by('-created_at'),
+                        'absence_requests': Absence.objects.all().order_by('-created_at'),
+                        'autorisations': Autorisation.objects.all().order_by('-created_at'),
+                        'login_histories': UserLoginHistory.objects.all().order_by('user', '-login_time'),
+                        'types_conge': TypeConge.objects.filter(flag_active=True),
+                        'types_absence': TypeAbsence.objects.filter(flag_active=True),
+                        'status_choices': Conge._meta.get_field('status').choices,
+                        'societe': profil.societe,
+                        'show_societe_card': show_societe_card,
+                        'societe_form': societe_form,
+                        'unread_notifications_count': request.user.notifications.filter(is_read=False).count(),
+                    })
+
+
                 user.username = username
-                profil.nom = nom
-                profil.prenom = prenom
-                profil.telephone = telephone
-                profil.adresse = adresse
-                profil.societe = Societe.objects.get(id=societe_id) if societe_id else None
-                profil.latitude = float(latitude) if latitude else None
-                profil.longitude = float(longitude) if longitude else None
-                profil.modified_by = request.user
+                user.email = email
+                employee_profil.nom = nom
+                employee_profil.prenom = prenom
+                employee_profil.telephone = telephone
+                employee_profil.adresse = adresse
+                employee_profil.societe = societe
+
                 user.save()
-                profil.save()
+                employee_profil.save()
                 messages.success(request, f"Employé {username} mis à jour avec succès.")
             else:
+                current_employees = Profil.objects.filter(societe=societe, poste="EMPLOYE").count()
+                if current_employees >= societe.employee_limit:
+                    messages.error(
+                        request,
+                        f"La limite d'employés ({societe.employee_limit}) pour la société {societe.nom} a été atteinte."
+                    )
+                    return render(request, "ITservBack/dashboard_ResponsableRH.html", {
+                        'form_data': form_data,
+                        'societes': Societe.objects.all().annotate(employee_count=Count('profil', filter=Q(profil__poste='EMPLOYE'))),
+                        'employees': User.objects.filter(profil__poste='EMPLOYE'),
+                        'pointages': Pointage.objects.all().order_by('-date'),
+                        'leave_requests': Conge.objects.all().order_by('-created_at'),
+                        'absence_requests': Absence.objects.all().order_by('-created_at'),
+                        'autorisations': Autorisation.objects.all().order_by('-created_at'),
+                        'login_histories': UserLoginHistory.objects.all().order_by('user', '-login_time'),
+                        'types_conge': TypeConge.objects.filter(flag_active=True),
+                        'types_absence': TypeAbsence.objects.filter(flag_active=True),
+                        'status_choices': Conge._meta.get_field('status').choices,
+                        'societe': profil.societe,
+                        'show_societe_card': show_societe_card,
+                        'societe_form': societe_form,
+                        'unread_notifications_count': request.user.notifications.filter(is_read=False).count(),
+                    })
+
+                if User.objects.filter(username=username).exists():
+                    messages.error(request, "Ce nom d'utilisateur est déjà pris.")
+                    return render(request, "ITservBack/dashboard_ResponsableRH.html", {
+                        'form_data': form_data,
+                        'societes': Societe.objects.all().annotate(employee_count=Count('profil', filter=Q(profil__poste='EMPLOYE'))),
+                        'employees': User.objects.filter(profil__poste='EMPLOYE'),
+                        'pointages': Pointage.objects.all().order_by('-date'),
+                        'leave_requests': Conge.objects.all().order_by('-created_at'),
+                        'absence_requests': Absence.objects.all().order_by('-created_at'),
+                        'autorisations': Autorisation.objects.all().order_by('-created_at'),
+                        'login_histories': UserLoginHistory.objects.all().order_by('user', '-login_time'),
+                        'types_conge': TypeConge.objects.filter(flag_active=True),
+                        'types_absence': TypeAbsence.objects.filter(flag_active=True),
+                        'status_choices': Conge._meta.get_field('status').choices,
+                        'societe': profil.societe,
+                        'show_societe_card': show_societe_card,
+                        'societe_form': societe_form,
+                        'unread_notifications_count': request.user.notifications.filter(is_read=False).count(),
+                    })
+
+
+
+                alphabet = string.ascii_letters + string.digits + string.punctuation
+                password = ''.join(secrets.choice(alphabet) for _ in range(12))
+
                 user = User.objects.create_user(
                     username=username,
-                    password='defaultpassword123',  # À modifier par l'employé
+                    email=email,
+                    password=password,
                     is_active=True
                 )
-                profil = Profil.objects.create(
+                Profil.objects.create(
                     user=user,
                     nom=nom,
                     prenom=prenom,
                     telephone=telephone,
                     adresse=adresse,
                     poste='EMPLOYE',
-                    societe=Societe.objects.get(id=societe_id) if societe_id else None,
-                    latitude=float(latitude) if latitude else None,
-                    longitude=float(longitude) if longitude else None,
-                    modified_by=request.user
+                    societe=societe,
+
+                    must_change_password=True
                 )
-                messages.success(request, f"Employé {username} ajouté avec succès.")
-        except User.DoesNotExist:
-            messages.error(request, "Employé non trouvé.")
+
+                subject = "Bienvenue - Vos identifiants de connexion"
+                message = (
+                    f"Bonjour {prenom} {nom},\n\n"
+                    f"Votre compte a été créé avec succès. Voici vos identifiants :\n"
+                    f"Nom d'utilisateur : {username}\n"
+                    f"Mot de passe : {password}\n\n"
+                    f"Société : {societe.nom}\n"
+                    f"Veuillez vous connecter à : http://127.0.0.1:8000/login/\n"
+                    f"Vous devrez changer votre mot de passe lors de votre première connexion.\n\n"
+                    f"Cordialement,\nL'équipe ITserv"
+                )
+                from_email = 'oussama21072000@gmail.com'
+                recipient_list = [email]
+
+                try:
+                    send_mail(subject, message, from_email, recipient_list, fail_silently=False)
+                    logger.info(f"Email envoyé avec succès à {email}")
+                except Exception as e:
+                    logger.error(f"Échec de l'envoi de l'email à {email} : {str(e)}")
+                    messages.error(request, f"Erreur lors de l'envoi de l'email : {str(e)}")
+                    return render(request, "ITservBack/dashboard_ResponsableRH.html", {
+                        'form_data': form_data,
+                        'societes': Societe.objects.all().annotate(employee_count=Count('profil', filter=Q(profil__poste='EMPLOYE'))),
+                        'employees': User.objects.filter(profil__poste='EMPLOYE'),
+                        'pointages': Pointage.objects.all().order_by('-date'),
+                        'leave_requests': Conge.objects.all().order_by('-created_at'),
+                        'absence_requests': Absence.objects.all().order_by('-created_at'),
+                        'autorisations': Autorisation.objects.all().order_by('-created_at'),
+                        'login_histories': UserLoginHistory.objects.all().order_by('user', '-login_time'),
+                        'types_conge': TypeConge.objects.filter(flag_active=True),
+                        'types_absence': TypeAbsence.objects.filter(flag_active=True),
+                        'status_choices': Conge._meta.get_field('status').choices,
+                        'societe': profil.societe,
+                        'show_societe_card': show_societe_card,
+                        'societe_form': societe_form,
+                        'unread_notifications_count': request.user.notifications.filter(is_read=False).count(),
+                    })
+
+                messages.success(request, f"Employé {username} ajouté avec succès. Un email avec les identifiants a été envoyé.")
+
         except Societe.DoesNotExist:
             messages.error(request, "Entreprise non trouvée.")
+            return render(request, "ITservBack/dashboard_ResponsableRH.html", {
+                'form_data': form_data,
+                'societes': Societe.objects.all().annotate(employee_count=Count('profil', filter=Q(profil__poste='EMPLOYE'))),
+                'employees': User.objects.filter(profil__poste='EMPLOYE'),
+                'pointages': Pointage.objects.all().order_by('-date'),
+                'leave_requests': Conge.objects.all().order_by('-created_at'),
+                'absence_requests': Absence.objects.all().order_by('-created_at'),
+                'autorisations': Autorisation.objects.all().order_by('-created_at'),
+                'login_histories': UserLoginHistory.objects.all().order_by('user', '-login_time'),
+                'types_conge': TypeConge.objects.filter(flag_active=True),
+                'types_absence': TypeAbsence.objects.filter(flag_active=True),
+                'status_choices': Conge._meta.get_field('status').choices,
+                'societe': profil.societe,
+                'show_societe_card': show_societe_card,
+                'societe_form': societe_form,
+                'unread_notifications_count': request.user.notifications.filter(is_read=False).count(),
+            })
         except ValueError:
             messages.error(request, "Format de localisation invalide ou données incorrectes.")
+            return render(request, "ITservBack/dashboard_ResponsableRH.html", {
+                'form_data': form_data,
+                'societes': Societe.objects.all().annotate(employee_count=Count('profil', filter=Q(profil__poste='EMPLOYE'))),
+                'employees': User.objects.filter(profil__poste='EMPLOYE'),
+                'pointages': Pointage.objects.all().order_by('-date'),
+                'leave_requests': Conge.objects.all().order_by('-created_at'),
+                'absence_requests': Absence.objects.all().order_by('-created_at'),
+                'autorisations': Autorisation.objects.all().order_by('-created_at'),
+                'login_histories': UserLoginHistory.objects.all().order_by('user', '-login_time'),
+                'types_conge': TypeConge.objects.filter(flag_active=True),
+                'types_absence': TypeAbsence.objects.filter(flag_active=True),
+                'status_choices': Conge._meta.get_field('status').choices,
+                'societe': profil.societe,
+                'show_societe_card': show_societe_card,
+                'societe_form': societe_form,
+                'unread_notifications_count': request.user.notifications.filter(is_read=False).count(),
+            })
         except Exception as e:
             messages.error(request, f"Erreur lors de la gestion de l'employé : {str(e)}")
-        return redirect(f"{reverse('responsable_rh_dashboard')}#pointage")
+            return render(request, "ITservBack/dashboard_ResponsableRH.html", {
+                'form_data': form_data,
+                'societes': Societe.objects.all().annotate(employee_count=Count('profil', filter=Q(profil__poste='EMPLOYE'))),
+                'employees': User.objects.filter(profil__poste='EMPLOYE'),
+                'pointages': Pointage.objects.all().order_by('-date'),
+                'leave_requests': Conge.objects.all().order_by('-created_at'),
+                'absence_requests': Absence.objects.all().order_by('-created_at'),
+                'autorisations': Autorisation.objects.all().order_by('-created_at'),
+                'login_histories': UserLoginHistory.objects.all().order_by('user', '-login_time'),
+                'types_conge': TypeConge.objects.filter(flag_active=True),
+                'types_absence': TypeAbsence.objects.filter(flag_active=True),
+                'status_choices': Conge._meta.get_field('status').choices,
+                'societe': profil.societe,
+                'show_societe_card': show_societe_card,
+                'societe_form': societe_form,
+                'unread_notifications_count': request.user.notifications.filter(is_read=False).count(),
+            })
 
-    # Récupérer les données pour les formulaires
-    societes = Societe.objects.all()
-    employees = User.objects.filter(profil__poste='EMPLOYE')
-    pointages = Pointage.objects.all().order_by('-date')
+        return redirect(f"{reverse('responsable_rh_dashboard')}?tab=employee")
+        # Gestion du pointage (entrée)
+    if request.method == 'POST' and 'check_in' in request.POST:
+        try:
+            # Récupérer la localisation envoyée par le client
+            employee_lat = request.POST.get('latitude')
+            employee_lon = request.POST.get('longitude')
 
-    # Gestion des autres onglets (congés, absences, etc.) - inchangé
+            if not employee_lat or not employee_lon:
+                messages.error(request, "Impossible de récupérer votre localisation.")
+                logger.warning(f"Localisation non fournie pour {request.user.username}")
+                return redirect('employee')
+
+            # Calculer la distance
+            distance = haversine_distance(employee_lat, employee_lon, societe_lat, societe_lon)
+            if distance > societe.rayon_acceptable:
+                messages.error(
+                    request,
+                    f"Pointage refusé : vous êtes trop loin du lieu de travail ({int(distance)}m, maximum {societe.rayon_acceptable}m)."
+                )
+                logger.warning(
+                    f"Pointage refusé pour {request.user.username} : distance {distance}m > {societe.rayon_acceptable}m"
+                )
+                return redirect('employee')
+
+            # Si la localisation est valide, procéder au pointage
+            today = timezone.now().date()
+            pointage, created = Pointage.objects.get_or_create(
+                employe=request.user,
+                date=today,
+                defaults={'heure_entree': timezone.now()}
+            )
+            if not created and pointage.heure_entree:
+                messages.warning(request, "Vous avez déjà pointé votre entrée aujourd'hui.")
+                logger.warning(f"Entrée déjà pointée pour {request.user.username} le {today}")
+            else:
+                Notification.objects.create(
+                    user=request.user,
+                    message=f"Vous avez pointé votre entrée le {today} à {pointage.heure_entree.strftime('%H:%M:%S')}"
+                )
+                messages.success(request, "Entrée pointée avec succès !")
+                logger.info(f"Entrée pointée pour {request.user.username} le {today}")
+        except Exception as e:
+            messages.error(request, f"Erreur lors du pointage d'entrée : {str(e)}")
+            logger.error(f"Erreur lors du pointage d'entrée pour {request.user.username} : {str(e)}")
+        return redirect('employee')
+
+        # Gestion du pointage (sortie)
+    if request.method == 'POST' and 'check_out' in request.POST:
+        try:
+            # Récupérer la localisation envoyée par le client
+            employee_lat = request.POST.get('latitude')
+            employee_lon = request.POST.get('longitude')
+
+            if not employee_lat or not employee_lon:
+                messages.error(request, "Impossible de récupérer votre localisation.")
+                logger.warning(f"Localisation non fournie pour {request.user.username}")
+                return redirect('employee')
+
+            # Calculer la distance
+            distance = haversine_distance(employee_lat, employee_lon, societe_lat, societe_lon)
+            if distance > societe.rayon_acceptable:
+                messages.error(
+                    request,
+                    f"Pointage refusé : vous êtes trop loin du lieu de travail ({int(distance)}m, maximum {societe.rayon_acceptable}m)."
+                )
+                logger.warning(
+                    f"Pointage refusé pour {request.user.username} : distance {distance}m > {societe.rayon_acceptable}m"
+                )
+                return redirect('employee')
+
+            # Si la localisation est valide, procéder au pointage
+            today = timezone.now().date()
+            pointage = Pointage.objects.filter(employe=request.user, date=today).first()
+            if pointage:
+                if pointage.heure_sortie:
+                    messages.warning(request, "Vous avez déjà pointé votre sortie aujourd'hui.")
+                    logger.warning(f"Sortie déjà pointée pour {request.user.username} le {today}")
+                else:
+                    pointage.heure_sortie = timezone.now()
+                    pointage.save()
+                    Notification.objects.create(
+                        user=request.user,
+                        message=f"Vous avez pointé votre sortie le {today} à {pointage.heure_sortie.strftime('%H:%M:%S')}"
+                    )
+                    messages.success(request, "Sortie pointée avec succès !")
+                    logger.info(f"Sortie pointée pour {request.user.username} le {today}")
+            else:
+                messages.error(request, "Vous devez d'abord pointer une entrée avant de pointer une sortie.")
+                logger.warning(f"Pas d'entrée trouvée pour {request.user.username} le {today}")
+        except Exception as e:
+            messages.error(request, f"Erreur lors du pointage de sortie : {str(e)}")
+            logger.error(f"Erreur lors du pointage de sortie pour {request.user.username} : {str(e)}")
+        return redirect(f"{reverse('employee')}?tab=pointage")
+
+    # Handle other tabs (congés, absences, etc.)
     autorisations = Autorisation.objects.all().order_by('-created_at')
     status = request.GET.get('status', '')
     start_date_from = request.GET.get('start_date_from', '')
@@ -1191,12 +1550,10 @@ def responsable_rh_dashboard(request):
     except EmptyPage:
         login_histories = history_paginator.page(history_paginator.num_pages)
 
-    unread_notifications_count = request.user.notifications.filter(is_read=False).count()
-
     context = {
         'leave_requests': leave_requests,
         'absence_requests': absence_requests,
-        'pointages': pointages,
+        'pointages': Pointage.objects.all().order_by('-date'),
         'types_conge': TypeConge.objects.filter(flag_active=True),
         'types_absence': TypeAbsence.objects.filter(flag_active=True),
         'status_choices': Conge._meta.get_field('status').choices,
@@ -1209,12 +1566,20 @@ def responsable_rh_dashboard(request):
         'end_date_to': end_date_to,
         'login_histories': login_histories,
         'user_filter': user_filter,
-        'unread_notifications_count': unread_notifications_count,
         'autorisations': autorisations,
-        'societes': societes,
-        'employees': employees,
+        'societe': profil.societe,
+        'show_societe_card': show_societe_card,
+        'societe_form': societe_form,
+        'societes': Societe.objects.all().annotate(employee_count=Count('profil', filter=Q(profil__poste='EMPLOYE'))),
+        'employees': User.objects.filter(profil__poste='EMPLOYE'),
+        'form_data': form_data,
+        'unread_notifications_count': request.user.notifications.filter(is_read=False).count(),
     }
+
     return render(request, "ITservBack/dashboard_ResponsableRH.html", context)
+
+
+
 
 def responsablerh_dashboard(request):
 
